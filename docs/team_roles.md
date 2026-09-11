@@ -137,8 +137,12 @@ exposes which results actually matter and stops Phase 7 from being a scramble.
 | R4 — Simulink + reporting | **Natik** | **Module 5 (Phase 5)** · Module 4 (Phase 4) |
 | R5 — Presentation / docs | **Oshi** | pitch · diagram · demo · keeping `docs/` honest |
 
-**Everyone:** run `python tools/verify_setup.py` and `setup_drishti` on your own
-machine before writing code, and commit nothing under `data/`.
+**Setup differs per role — don't install what you don't need.** See
+[environment_setup.md §0](environment_setup.md#0-what-do-i-actually-need) for the
+per-person checklist. Short version: Abhigyat and Oshi need nothing installed;
+Natik needs MATLAB + Simulink + SimEvents but **not** the datasets yet.
+
+**Everyone:** commit nothing under `data/`, `models/`, `results/` or `reports/`.
 
 ---
 

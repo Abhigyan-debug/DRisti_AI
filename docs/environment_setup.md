@@ -4,28 +4,66 @@
 
 ---
 
-## 1. Quick start
+## 0. What do I actually need?
+
+**Not everyone needs the full setup.** Installing MATLAB and downloading 12.8 GB of
+fundus images takes most of a day — only do it if your role requires it.
+
+| You are | MATLAB | Datasets | What to do |
+|---|---|---|---|
+| **Abhigyat** — R3, clinical research | ❌ | ❌ | `git clone` only (or just read on GitHub). Your work is literature, the DME decision, and sourcing Module 5's parameters. |
+| **Oshi** — R5, presentation / docs | ❌ | ❌ | `git clone` only. You need results, not a toolchain. |
+| **Natik** — R4, Module 5 then Module 4 | ✅ Simulink + SimEvents | ❌ *not yet* | Follow §A below. **Module 5 is a queuing simulation with no images in it** — you do not need the datasets to build it. You will need them later for Module 4. |
+| **Abhigyan** — R1 + R2 | ✅ all toolboxes | ✅ | Full setup, §A then §B. Already done. |
+
+> ⚠️ If you don't have the datasets, **`python tools/verify_setup.py` will fail** —
+> that is expected, not a broken install. It only checks the data layout. Skip it.
+
+---
+
+## 1. Clone and install MATLAB
+
+*(Natik, Abhigyan)*
 
 ```bash
-git clone <repo-url> DRishti_AI
-cd DRishti_AI
-
-# 1. Point at the datasets (see §3)
-cp config/local_paths.example.json config/local_paths.json
-#    then edit dataRoot
-
-# 2. Verify (runs without MATLAB)
-python tools/verify_setup.py
+git clone https://github.com/Abhigyan-debug/DRisti_AI.git
+cd DRisti_AI
 ```
 
-Then in MATLAB, from the repo root:
+Install MATLAB **R2026a or newer** with the products for your role — see
+[matlab_install.md](matlab_install.md). Then, from the repo root:
 
 ```matlab
 >> setup_drishti
 ```
 
 `startup.m` runs this automatically if you launch MATLAB with the repo as the
-current folder.
+current folder. It adds `src/` to the path and reports toolbox status.
+
+Without the datasets, `setup_drishti` will list them as `MISSING` and
+`check_environment` will say `NOT READY`. **That is correct and harmless** — the
+MATLAB path is still set up and Simulink work proceeds normally.
+
+### Getting the datasets
+
+*(Abhigyan now; Natik later, for Module 4)*
+
+The datasets are **not in the repo** and cannot be — cloning gets you no data.
+Two options:
+
+1. **Copy from Abhigyan's `D:\DRishti_AI_data`** — much faster, and `_archives/`
+   there already holds the original downloads.
+2. **Re-download** from Kaggle / IEEE DataPort / grand-challenge / ADCIS, then run
+   `python tools/organize_datasets.py` to build the canonical layout.
+
+Then point the repo at them:
+
+```bash
+cp config/local_paths.example.json config/local_paths.json
+#    edit dataRoot to wherever you put them
+
+python tools/verify_setup.py        # should now print READY
+```
 
 ---
 

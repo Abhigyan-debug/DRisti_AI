@@ -78,8 +78,46 @@ def fov_mask(gray: np.ndarray, thresh: int = 12) -> tuple[np.ndarray, float, tup
     return lit, diameter, (r0, c0, r1, c1)
 
 
+def erode_square(mask: np.ndarray, k: int = 7) -> np.ndarray:
+    """Binary erosion with a k x k square. Mirrors MATLAB imerode(mask, strel('square', k)).
+
+    Written out rather than pulled from scipy so this tool keeps its only
+    dependency as Pillow + numpy, and so the structuring element provably
+    matches the MATLAB side pixel for pixel.
+    """
+    r = k // 2
+    out = mask.copy()
+    # Separable: a square erosion is a horizontal pass then a vertical pass.
+    for axis in (0, 1):
+        cur = out
+        acc = cur.copy()
+        for s in range(1, r + 1):
+            shifted_fwd = np.zeros_like(cur)
+            shifted_bwd = np.zeros_like(cur)
+            if axis == 0:
+                shifted_fwd[s:, :] = cur[:-s, :]
+                shifted_bwd[:-s, :] = cur[s:, :]
+            else:
+                shifted_fwd[:, s:] = cur[:, :-s]
+                shifted_bwd[:, :-s] = cur[:, s:]
+            acc &= shifted_fwd & shifted_bwd
+        out = acc
+    return out
+
+
 def laplacian_variance(gray: np.ndarray, mask: np.ndarray | None = None) -> float:
-    """Variance of the 4-neighbour Laplacian - the standard focus measure."""
+    """Variance of the 4-neighbour Laplacian inside the eroded FOV.
+
+    MUST stay identical to src/quality_enhancement/measureSharpness.m. The
+    thresholds this script emits are consumed directly by the MATLAB gate, so a
+    definition mismatch silently invalidates them. Two things matter:
+
+      1. Measured on the 0-255 intensity scale (not [0,1]).
+      2. The FOV mask is eroded by a 7x7 square first. The FOV boundary is a
+         hard black-to-retina step and the strongest edge in the frame; leaving
+         it in makes the score partly a function of how much black surround the
+         camera left in, which is a crop convention rather than focus.
+    """
     g = gray.astype(np.float32)
     lap = (
         4.0 * g[1:-1, 1:-1]
@@ -89,7 +127,7 @@ def laplacian_variance(gray: np.ndarray, mask: np.ndarray | None = None) -> floa
         - g[1:-1, 2:]
     )
     if mask is not None:
-        m = mask[1:-1, 1:-1]
+        m = erode_square(mask, 7)[1:-1, 1:-1]
         if m.sum() < 100:
             return 0.0
         lap = lap[m]

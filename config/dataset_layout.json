@@ -1,57 +1,146 @@
 {
   "_comment": "Single source of truth for the on-disk dataset layout. Consumed by tools/verify_setup.py and tests/test_project_setup.m so the Python tooling and the MATLAB pipeline cannot drift apart. Paths are relative to the data root (see config/drishti_paths.m). Counts were verified 2026-09-11 and cross-checked against the published dataset specifications.",
   "_verified": "2026-09-11",
-
   "directories": [
-    { "path": "aptos2019/train_images",  "count": 3662, "ext": ".png" },
-    { "path": "aptos2019/test_images",   "count": 1928, "ext": ".png", "note": "no public labels - unusable for evaluation" },
-
-    { "path": "idrid/segmentation/1. Original Images/a. Training Set", "count": 54, "ext": ".jpg" },
-    { "path": "idrid/segmentation/1. Original Images/b. Testing Set",  "count": 27, "ext": ".jpg" },
-    { "path": "idrid/segmentation/2. All Segmentation Groundtruths/a. Training Set/1. Microaneurysms", "count": 54, "ext": ".tif" },
-    { "path": "idrid/segmentation/2. All Segmentation Groundtruths/a. Training Set/2. Haemorrhages",   "count": 53, "ext": ".tif" },
-    { "path": "idrid/segmentation/2. All Segmentation Groundtruths/a. Training Set/3. Hard Exudates",  "count": 54, "ext": ".tif" },
-    { "path": "idrid/segmentation/2. All Segmentation Groundtruths/a. Training Set/4. Soft Exudates",  "count": 26, "ext": ".tif", "note": "SE present in fewer than half the images" },
-    { "path": "idrid/segmentation/2. All Segmentation Groundtruths/a. Training Set/5. Optic Disc",     "count": 54, "ext": ".tif" },
-
-    { "path": "idrid/grading/1. Original Images/a. Training Set", "count": 413, "ext": ".jpg" },
-    { "path": "idrid/grading/1. Original Images/b. Testing Set",  "count": 103, "ext": ".jpg" },
-
-    { "path": "idrid/localization/1. Original Images/a. Training Set", "count": 413, "ext": ".jpg" },
-    { "path": "idrid/localization/1. Original Images/b. Testing Set",  "count": 103, "ext": ".jpg" },
-
-    { "path": "drive/training/images",     "count": 20, "ext": ".tif" },
-    { "path": "drive/training/1st_manual", "count": 20, "ext": ".gif" },
-    { "path": "drive/training/mask",       "count": 20, "ext": ".gif" },
-    { "path": "drive/test/images",         "count": 20, "ext": ".tif" },
-    { "path": "drive/test/mask",           "count": 20, "ext": ".gif" },
-
-    { "path": "messidor2/IMAGES", "count": 1748, "ext": [".png", ".jpg"], "note": "MIXED formats: 1058 .png + 690 .JPG (uppercase) - different acquisition batches. Glob case-insensitively and expect JPEG artifacts in ~40% of the set." }
+    {
+      "path": "aptos2019/train_images",
+      "count": 3662,
+      "ext": ".png"
+    },
+    {
+      "path": "aptos2019/test_images",
+      "count": 1928,
+      "ext": ".png",
+      "note": "no public labels - unusable for evaluation"
+    },
+    {
+      "path": "idrid/segmentation/1. Original Images/a. Training Set",
+      "count": 54,
+      "ext": ".jpg"
+    },
+    {
+      "path": "idrid/segmentation/1. Original Images/b. Testing Set",
+      "count": 27,
+      "ext": ".jpg"
+    },
+    {
+      "path": "idrid/segmentation/2. All Segmentation Groundtruths/a. Training Set/1. Microaneurysms",
+      "count": 54,
+      "ext": ".tif"
+    },
+    {
+      "path": "idrid/segmentation/2. All Segmentation Groundtruths/a. Training Set/2. Haemorrhages",
+      "count": 53,
+      "ext": ".tif"
+    },
+    {
+      "path": "idrid/segmentation/2. All Segmentation Groundtruths/a. Training Set/3. Hard Exudates",
+      "count": 54,
+      "ext": ".tif"
+    },
+    {
+      "path": "idrid/segmentation/2. All Segmentation Groundtruths/a. Training Set/4. Soft Exudates",
+      "count": 26,
+      "ext": ".tif",
+      "note": "SE present in fewer than half the images"
+    },
+    {
+      "path": "idrid/segmentation/2. All Segmentation Groundtruths/a. Training Set/5. Optic Disc",
+      "count": 54,
+      "ext": ".tif"
+    },
+    {
+      "path": "idrid/grading/1. Original Images/a. Training Set",
+      "count": 413,
+      "ext": ".jpg"
+    },
+    {
+      "path": "idrid/grading/1. Original Images/b. Testing Set",
+      "count": 103,
+      "ext": ".jpg"
+    },
+    {
+      "path": "idrid/localization/1. Original Images/a. Training Set",
+      "count": 413,
+      "ext": ".jpg"
+    },
+    {
+      "path": "idrid/localization/1. Original Images/b. Testing Set",
+      "count": 103,
+      "ext": ".jpg"
+    },
+    {
+      "path": "drive/training/images",
+      "count": 20,
+      "ext": ".tif"
+    },
+    {
+      "path": "drive/training/1st_manual",
+      "count": 20,
+      "ext": ".gif"
+    },
+    {
+      "path": "drive/training/mask",
+      "count": 20,
+      "ext": ".gif"
+    },
+    {
+      "path": "drive/test/images",
+      "count": 20,
+      "ext": ".tif"
+    },
+    {
+      "path": "drive/test/mask",
+      "count": 20,
+      "ext": ".gif"
+    },
+    {
+      "path": "messidor2/IMAGES",
+      "count": 1748,
+      "ext": [
+        ".png",
+        ".jpg"
+      ],
+      "note": "MIXED formats: 1058 .png + 690 .JPG (uppercase) - different acquisition batches. Glob case-insensitively and expect JPEG artifacts in ~40% of the set."
+    }
   ],
-
   "files": [
-    { "path": "aptos2019/train.csv" },
-    { "path": "aptos2019/test.csv" },
-    { "path": "idrid/grading/2. Groundtruths/a. IDRiD_Disease Grading_Training Labels.csv" },
-    { "path": "idrid/grading/2. Groundtruths/b. IDRiD_Disease Grading_Testing Labels.csv" },
-    { "path": "idrid/localization/2. Groundtruths/1. Optic Disc Center Location/a. IDRiD_OD_Center_Training Set_Markups.csv" },
-    { "path": "idrid/localization/2. Groundtruths/2. Fovea Center Location/IDRiD_Fovea_Center_Training Set_Markups.csv", "note": "fovea CSVs have no 'a. '/'b. ' prefix, unlike the optic-disc ones" },
-    { "path": "idrid/localization/2. Groundtruths/2. Fovea Center Location/IDRiD_Fovea_Center_Testing Set_Markups.csv" },
-    { "path": "messidor2/messidor-2.csv" }
+    {
+      "path": "aptos2019/train.csv"
+    },
+    {
+      "path": "aptos2019/test.csv"
+    },
+    {
+      "path": "idrid/grading/2. Groundtruths/a. IDRiD_Disease Grading_Training Labels.csv"
+    },
+    {
+      "path": "idrid/grading/2. Groundtruths/b. IDRiD_Disease Grading_Testing Labels.csv"
+    },
+    {
+      "path": "idrid/localization/2. Groundtruths/1. Optic Disc Center Location/a. IDRiD_OD_Center_Training Set_Markups.csv"
+    },
+    {
+      "path": "idrid/localization/2. Groundtruths/2. Fovea Center Location/IDRiD_Fovea_Center_Training Set_Markups.csv",
+      "note": "fovea CSVs have no 'a. '/'b. ' prefix, unlike the optic-disc ones"
+    },
+    {
+      "path": "idrid/localization/2. Groundtruths/2. Fovea Center Location/IDRiD_Fovea_Center_Testing Set_Markups.csv"
+    },
+    {
+      "path": "messidor2/messidor-2.csv"
+    },
+    {
+      "path": "messidor2/messidor_data.csv",
+      "note": "Krause et al. adjudicated reference standard: image_id, adjudicated_dr_grade (0-4), adjudicated_dme (0/1), adjudicated_gradable (0/1). 1748 rows, 4 ungradable. NOTE: referable prevalence 26.2% here vs 14.6% in Gulshan 2016 on the same images - different reference standard, see docs/datasets.md."
+    }
   ],
-
   "known_missing": [
     {
       "path": "drive/test/1st_manual",
       "reason": "DRIVE test-set vessel ground truth is withheld in this distribution.",
       "blocks": "Phase 2 - comparable vessel segmentation scores",
       "fix": "Obtain official test annotations from https://drive.grand-challenge.org, or split the 20 annotated training images and document the non-standard protocol."
-    },
-    {
-      "path": "messidor2/messidor_data.csv",
-      "reason": "Our Messidor-2 copy has images + left/right pairing only, no ICDR grade labels.",
-      "blocks": "Phase 6 - all external validation metrics",
-      "fix": "Download the adjudicated reference standard: https://www.kaggle.com/datasets/google-brain/messidor2-dr-grades"
     }
   ]
 }
