@@ -43,16 +43,25 @@ function R = evaluateDiscLocalization(split, opts)
     radius = nan(n, 1);
     secs = nan(n, 1);
 
-    for k = 1:n
-        img = imread(T.imagePath(k));
+    % Slice the table into plain arrays: parfor cannot index a table across
+    % workers, and broadcasting the whole table to each worker is wasteful.
+    paths = T.imagePath(1:n);
+    gtx = T.x(1:n);
+    gty = T.y(1:n);
+
+    % Evaluation is embarrassingly parallel - every image is independent - and
+    % this machine has 20 physical cores that were sitting idle. Serially a
+    % 413-image sweep costs ~5.5 minutes, which turned every parameter
+    % experiment into a coffee break and was the main reason iteration was slow.
+    % parfor silently degrades to a serial loop when no pool is available, so
+    % this stays safe on a teammate's machine without Parallel Computing Toolbox.
+    parfor k = 1:n
+        img = imread(paths(k));
         d = locateOpticDisc(img);
-        err(k) = hypot(d.centre(1) - T.x(k), d.centre(2) - T.y(k));
+        err(k) = hypot(d.centre(1) - gtx(k), d.centre(2) - gty(k));
         conf(k) = d.confidence;
         radius(k) = d.radius;
         secs(k) = d.elapsed;
-        if opts.verbose && mod(k, 50) == 0
-            fprintf('  %d/%d  running median %.1f px\n', k, n, median(err(1:k), 'omitnan'));
-        end
     end
 
     withinDisc = err <= radius;

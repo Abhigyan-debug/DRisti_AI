@@ -1,0 +1,83 @@
+{
+  "_comment": "THE MODULE 2 OUTPUT CONTRACT. Every lesion detector writes this struct and nothing else; Module 3 reads only this. Agree it BEFORE parallel work starts - it is what lets five detectors be built independently and still integrate. Adding a field is safe; renaming or removing one breaks Phase 3 and must be a deliberate versioned change.",
+  "_version": "1.0.0",
+  "_owner": "R1 (Abhigyan) - contract owner; detector authors implement against it",
+
+  "_units_policy": {
+    "rule": "EVERY spatial quantity is expressed in DISC DIAMETERS (DD), never pixels.",
+    "why": "Our corpora span a 6.7x resolution range (640x480 to 4288x2848). A count-per-pixel or an area-in-pixels feature silently encodes camera model rather than pathology, and Phase 3 would learn the dataset instead of the disease. Module 1 hit this exact failure with the sharpness metric (r = -0.75 against FOV diameter) - do not repeat it here.",
+    "conversion": "dd = pixels / (2 * discRadiusPx), where discRadiusPx comes from locateOpticDisc. Areas divide by (2*discRadiusPx)^2.",
+    "fallback": "If the disc is not found, set anatomy.discFound = false and fall back to fovDiameter/6.48 - the measured IDRiD disc/FOV ratio. Flag it; Phase 3 may choose to drop those cases."
+  },
+
+  "anatomy": {
+    "discFound": "logical",
+    "discCentre": "[x y] in original image pixels",
+    "discRadiusPx": "double, original image pixels",
+    "discConfidence": "0..1 - measured to track error at Spearman rho -0.70, so it is usable for weighting",
+    "foveaFound": "logical",
+    "foveaCentre": "[x y] in original image pixels",
+    "discFoveaDistancePx": "double - the anatomical scale reference",
+    "laterality": "'OD' | 'OS' | 'unknown' - which eye. Derived from whether the disc is temporal or nasal to the fovea. Needed because lesion position relative to the macula is side-dependent."
+  },
+
+  "microaneurysms": {
+    "count": "integer, total detected",
+    "countWithin1DD": "integer within 1 disc diameter of the fovea centre",
+    "densityPerDD2": "double, count per square disc diameter",
+    "meanRadiusDD": "double",
+    "_note": "Best published IDRiD AUPR for MA is 0.5017. Expect a noisy feature and report it as such; a Phase 2 MA score near 0.9 means a bug or a leak."
+  },
+
+  "haemorrhages": {
+    "count": "integer",
+    "areaDD2": "double, total area in square disc diameters",
+    "largestAreaDD2": "double",
+    "countByType": "struct with fields dot, blot, flame - integers",
+    "_note": "Dot haemorrhages and MAs are the same size; separation is by colour and edge sharpness, not size alone. Whatever rule is used, write it in the detector's help text."
+  },
+
+  "hardExudates": {
+    "areaDD2": "double",
+    "count": "integer, connected components",
+    "minDistanceToFoveaDD": "double - DRIVES THE DME ENDPOINT. IDRiD grades DME risk by shortest distance from the macula centre to any hard exudate: grade 2 = within 1 DD. See config/clinical_definitions.json.",
+    "areaWithin1DDofFovea": "double"
+  },
+
+  "softExudates": {
+    "areaDD2": "double",
+    "count": "integer",
+    "_note": "IDRiD has soft-exudate masks for only 26 of 54 training images. This will be the least reliable channel; Module 4 should weight its evidence accordingly."
+  },
+
+  "neovascularization": {
+    "suspectedAtDisc": "logical",
+    "suspectedElsewhere": "logical",
+    "vesselTortuosityIndex": "double",
+    "abnormalVesselDensityDD2": "double",
+    "_note": "Heuristic detector, marker of proliferative DR (ICDR grade 4). Low prevalence - 49 of 413 IDRiD training images are grade 4 - so expect very few positives and do not tune it to fire more often."
+  },
+
+  "vessels": {
+    "totalLengthDD": "double",
+    "meanCaliberDD": "double",
+    "arcadeAngleDeg": "double",
+    "_note": "Vessel map is also consumed by locateOpticDisc's vesselWeight option, which is currently 0 because the black-top-hat proxy was too crude. Wiring the real segmentation there is a one-line change."
+  },
+
+  "quality": {
+    "_comment": "Carried through from Module 1 so Phase 3 can weight or exclude marginal images, and so Phase 6 can report the referral_or_recapture endpoint.",
+    "decision": "'pass' | 'reject'",
+    "enhanced": "logical",
+    "sharpnessNormalised": "double",
+    "illumUniformityCV": "double",
+    "noise": "double"
+  },
+
+  "_provenance": {
+    "imageName": "string",
+    "sourceDataset": "'aptos2019' | 'idrid' | 'drive' | 'messidor2'",
+    "pipelineVersion": "string - git describe at extraction time",
+    "_why": "Phase 6 compares an integrated pipeline against a baseline. Without provenance on every feature row, a result cannot be traced back to the code that produced it."
+  }
+}
