@@ -44,15 +44,34 @@ function m = measureIllumination(img, fov)
     m.contrast = prctile(inside, 99) - prctile(inside, 1);
     m.darkFraction = mean(inside <= 15/255);
 
-    % Glare: saturation in ANY channel. Checking luminance alone misses the
-    % coloured specular reflections that handheld cameras produce off the
-    % cornea, which blow one channel while luminance stays mid-range.
+    % Glare: specular reflection is ACHROMATIC - it blows all three channels to
+    % white. Requiring min(R,G,B) to saturate is what makes this a glare
+    % detector rather than an exposure detector.
+    %
+    % The first version used max(R,G,B) >= 250 ("any channel"). That was wrong
+    % and measured nothing but red-channel clipping: corr(any-channel, red-only)
+    % = +1.000 across 140 images, and of 75 images flagged above 1%, ZERO had
+    % all-channel saturation. The retina is red, so the red channel clips in
+    % ordinary well-exposed fundus photographs - flagging that as glare rejected
+    % perfectly good images.
     if size(rgb, 3) == 3
+        minChan = min(rgb, [], 3);
         maxChan = max(rgb, [], 3);
     else
+        minChan = rgb;
         maxChan = rgb;
     end
-    m.glareFraction = mean(maxChan(mask) >= 250/255);
+    m.glareFraction = mean(minChan(mask) >= 240/255);
+
+    % Kept separately: red clipping is a real overexposure signal, just not a
+    % glare signal. Useful for Module 2, where a clipped red channel means lost
+    % haemorrhage contrast.
+    if size(rgb, 3) == 3
+        red = rgb(:,:,1);
+        m.redClipFraction = mean(red(mask) >= 250/255);
+    else
+        m.redClipFraction = mean(maxChan(mask) >= 250/255);
+    end
 
     % --- uniformity ------------------------------------------------------
     [m.uniformityCV, blockMeans, blockValid] = blockUniformity(gray, mask, 8);

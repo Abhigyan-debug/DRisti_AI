@@ -80,8 +80,17 @@ function d = gateImage(q, th)
     end
 
     % ---- illumination uniformity ----------------------------------------
+    % Uneven illumination is NEVER a hard reject on its own. Correcting it is
+    % precisely what Module 1's enhancement stage exists to do, so routing it
+    % straight to reject throws away images the pipeline is designed to fix.
+    % Native-resolution inspection confirmed the images rejected on this code
+    % had clearly visible discs and vessels - they were gradable.
+    %
+    % Catastrophic cases are still caught: a half-black frame trips
+    % 'large_dark_region', and an unusable exposure trips under/overexposed.
+    % The real decision is made when the enhanced image is re-gated.
     if q.illum.uniformityCV > th.illumination.reject
-        reasons(end+1) = mkReason('uneven_illumination', 'reject', ...
+        reasons(end+1) = mkReason('severe_uneven_illumination', 'borderline', ...
             gradientMessage(q.illum.brightSide, true), ...
             q.illum.uniformityCV, th.illumination.reject);
     elseif q.illum.uniformityCV > th.illumination.borderline
