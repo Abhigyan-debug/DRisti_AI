@@ -1,0 +1,138 @@
+function e = segmentExudates(img, ctx)
+%SEGMENTEXUDATES  Hard and soft exudate segmentation.
+%
+%   e = SEGMENTEXUDATES(img, ctx) where ctx carries .fov, .disc and optionally
+%   .vesselMask and .fovea. Returns:
+%       e.hardMask, e.softMask          logical, original image size
+%       e.hardAreaDD2, e.softAreaDD2    area in square disc diameters
+%       e.hardCount, e.softCount
+%       e.minDistanceToFoveaDD          DRIVES THE DME ENDPOINT
+%       e.areaWithin1DDofFovea
+%
+%   Why this detector matters most
+%   ------------------------------
+%   Two reasons. It has the highest achievable benchmark of any lesion (IDRiD
+%   AUPR 0.885 for hard exudates - the only lesion where high numbers are
+%   plausible at all). And since R3's DME decision, e.minDistanceToFoveaDD
+%   directly drives a reported clinical endpoint: IDRiD grades DME risk by the
+%   shortest distance from the macula centre to any hard exudate, with grade 2
+%   (referable) at <= 1 disc diameter.
+%
+%   HARD vs SOFT
+%   ------------
+%   Hard exudates are lipid deposits: bright yellow, sharp-edged, often
+%   clustered. Soft exudates (cotton-wool spots) are nerve-fibre infarcts:
+%   paler, fluffy, indistinct margins. They are separated here on edge
+%   sharpness and colour saturation, not size - the size ranges overlap.
+%
+%   THE OPTIC DISC MUST BE EXCLUDED. It is the brightest object in the image
+%   and would otherwise be returned as one enormous exudate in every single
+%   image, which is the classic failure of any brightness-threshold approach.
+%
+%   Soft exudate ground truth exists for only 26 of 54 IDRiD training images,
+%   so that channel is the least reliable output of this module.
+%
+%   See also EXTRACTLESIONFEATURES, DETECTHAEMORRHAGES.
+
+    arguments
+        img (:,:,:) {mustBeNumeric}
+        ctx struct
+    end
+
+    fov = ctx.fov;
+    disc = ctx.disc;
+    discDiam = 2 * disc.radius;
+
+    WORK_FOV_PX = 1024;
+    scale = min(1, WORK_FOV_PX / fov.diameter);
+    small = imresize(im2double(img), scale, 'bilinear');
+    mask = imresize(fov.mask, scale, 'nearest');
+    if size(small,3) ~= 3, small = repmat(small,1,1,3); end
+
+    discR = disc.radius * scale;
+    discDiamWork = 2 * discR;
+
+    green = small(:,:,2);
+
+    % Flatten illumination - otherwise a bright quadrant reads as exudate
+    bg = estimateBackground(green, mask, fov.diameter * scale);
+    flat = green - bg;
+
+    valid = imerode(mask, strel('disk', max(2, round(discR * 0.10))));
+
+    % --- exclude the optic disc -------------------------------------------
+    [Y, X] = ndgrid(1:size(green,1), 1:size(green,2));
+    dcx = disc.centre(1) * scale; dcy = disc.centre(2) * scale;
+    discZone = sqrt((X - dcx).^2 + (Y - dcy).^2) <= discR * 1.25;
+    valid = valid & ~discZone;
+
+    % --- candidate bright regions -----------------------------------------
+    vals = flat(valid);
+    if isempty(vals)
+        e = emptyResult(img); return
+    end
+    thr = median(vals) + 2.2 * std(vals);
+    cand = flat > thr & valid;
+
+    % Vessels can produce bright specular reflexes along their centreline;
+    % remove anything sitting on a vessel.
+    if isfield(ctx, 'vesselMask') && ~isempty(ctx.vesselMask)
+        vm = imresize(ctx.vesselMask, size(green), 'nearest');
+        cand = cand & ~imdilate(vm, strel('disk', 2));
+    end
+
+    cand = bwareaopen(cand, max(4, round((discDiamWork * 0.01)^2)));
+
+    % --- hard vs soft -----------------------------------------------------
+    % Hard exudates have sharp margins and higher yellow saturation; soft ones
+    % are fluffy and desaturated. Gradient magnitude at the boundary separates
+    % them better than any intensity rule.
+    gradMag = imgradient(imgaussfilt(green, 1));
+    lab = rgb2lab(small);
+    bStar = lab(:,:,3);            % yellow-blue axis; exudate lipid is yellow
+
+    cc = bwconncomp(cand, 8);
+    hardMask = false(size(cand));
+    softMask = false(size(cand));
+    for k = 1:cc.NumObjects
+        px = cc.PixelIdxList{k};
+        sharpness = mean(gradMag(px));
+        yellowness = mean(bStar(px));
+        % Thresholds are deliberately soft - this split is the least certain
+        % part of the detector and both classes feed the same DME distance.
+        if sharpness > prctile(gradMag(valid), 75) || yellowness > 25
+            hardMask(px) = true;
+        else
+            softMask(px) = true;
+        end
+    end
+
+    % --- measure ----------------------------------------------------------
+    e.hardMask = imresize(hardMask, [size(img,1) size(img,2)], 'nearest');
+    e.softMask = imresize(softMask, [size(img,1) size(img,2)], 'nearest');
+
+    areaScale = discDiamWork^2;
+    e.hardAreaDD2 = nnz(hardMask) / max(areaScale, 1);
+    e.softAreaDD2 = nnz(softMask) / max(areaScale, 1);
+    ccH = bwconncomp(hardMask, 8); e.hardCount = ccH.NumObjects;
+    ccS = bwconncomp(softMask, 8); e.softCount = ccS.NumObjects;
+
+    % --- DME driver: distance from fovea to nearest hard exudate ----------
+    e.minDistanceToFoveaDD = Inf;
+    e.areaWithin1DDofFovea = 0;
+    if isfield(ctx, 'fovea') && ~isempty(ctx.fovea) && ctx.fovea.found && any(hardMask(:))
+        fx = ctx.fovea.centre(1) * scale;
+        fy = ctx.fovea.centre(2) * scale;
+        dists = sqrt((X - fx).^2 + (Y - fy).^2);
+        e.minDistanceToFoveaDD = min(dists(hardMask)) / max(discDiamWork, 1);
+        e.areaWithin1DDofFovea = nnz(hardMask & dists <= discDiamWork) / max(areaScale, 1);
+    end
+end
+
+
+function e = emptyResult(img)
+    z = false(size(img,1), size(img,2));
+    e = struct('hardMask', z, 'softMask', z, 'hardAreaDD2', 0, 'softAreaDD2', 0, ...
+        'hardCount', 0, 'softCount', 0, 'minDistanceToFoveaDD', Inf, ...
+        'areaWithin1DDofFovea', 0);
+end
