@@ -41,8 +41,28 @@ function m = measureIllumination(img, fov)
     end
 
     m.meanIntensity = mean(inside);
-    m.contrast = prctile(inside, 99) - prctile(inside, 1);
     m.darkFraction = mean(inside <= 15/255);
+
+    % Contrast is measured on the DETRENDED image - the luminance with its
+    % low-frequency illumination component removed.
+    %
+    % A plain p99-p1 over the whole FOV conflates contrast with illumination
+    % unevenness: a vignetted image scores "high contrast" purely because one
+    % side is bright and the other dark. That made illumination correction
+    % appear to DESTROY contrast (0.570 -> 0.295 on a real APTOS image) when it
+    % had in fact improved the image, and it would have made the enhancement
+    % stage look harmful in the Phase 6 baseline comparison.
+    %
+    % What actually determines gradability is local contrast - can a vessel or
+    % a microaneurysm be told apart from the retina immediately around it.
+    background = estimateBackground(gray, mask, fov.diameter);
+    detrended = gray - background;
+    dv = detrended(mask);
+    m.contrast = prctile(dv, 99) - prctile(dv, 1);
+
+    % The old global measure, kept as a diagnostic: it is a decent proxy for
+    % illumination spread, just not for contrast.
+    m.globalRange = prctile(inside, 99) - prctile(inside, 1);
 
     % Glare: specular reflection is ACHROMATIC - it blows all three channels to
     % white. Requiring min(R,G,B) to saturate is what makes this a glare
