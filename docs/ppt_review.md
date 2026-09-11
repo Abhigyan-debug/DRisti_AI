@@ -29,8 +29,9 @@ priority item in the whole submission.**
   0.50, so this is a genuinely hard problem, not an excuse.
 - **Grad-CAM is not yet lesion-grounded.** Measured attention enrichment 1.51×
   over chance against expert masks — above chance, but not corroboration.
-- **No external validation yet.** Messidor-2 is deliberately held out and untouched;
-  all current numbers are internal validation.
+- **External validation shows a large generalisation gap.** Sensitivity falls from
+  90.3% internally to **31.2%** on Messidor-2 at the frozen operating point. This is
+  the most important limitation on the project and belongs on the slide.
 - **No ophthalmologist has reviewed the outputs.** The review protocol exists; the
   clinician does not.
 - **DME is inferred from hard exudates, not OCT** — the same proxy the published
@@ -154,12 +155,14 @@ measured results with the protocol stated, e.g.:
 > "**Measured:** Sensitivity 90.3%, Specificity 95.9%, AUC 0.9891 on a held-out
 > validation split (n=733). Quadratic weighted kappa 0.9087 — within 0.03 of the
 > APTOS competition winner, which used a model ensemble and 88,702 additional
-> training images. External validation on Messidor-2 is deliberately held back until
-> our operating point is frozen."
+> training images."
 
-That last sentence is worth including on its own. **Most teams will have quietly
-tuned on their test set.** Saying you refused to is a differentiator judges in a
-clinical track will recognise.
+Pair it immediately with the external result — see the Messidor-2 section above.
+Presenting the internal number alone is now knowingly misleading.
+
+**Most teams will have quietly tuned on their test set.** Holding Messidor-2 out,
+freezing the threshold first, and reporting the gap you find is the differentiator
+judges in a clinical track will recognise.
 
 ---
 
