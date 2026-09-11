@@ -13,10 +13,26 @@
 ## 1. Problem Context
 
 ### 1.1 The Public Health Gap
-- India has **77M+ diabetic adults** — the second-highest burden globally.
-- **~18%** of diabetics develop Diabetic Retinopathy (DR), a leading cause of *preventable* blindness.
-- Early screening prevents **~90%** of DR-related vision loss — but India has only **~1 ophthalmologist per 100,000 rural population**.
-- Manual, in-person mass screening is logistically and economically infeasible at national scale.
+
+*Every figure here is sourced. Provenance and the claims we removed:
+[docs/literature_benchmarks.md](docs/literature_benchmarks.md) §4.*
+
+- India has **~101 million diabetic adults** — the second-highest burden globally
+  (ICMR-INDIAB, 11.4% prevalence).
+- **12.5%** of people with diabetes have DR (95% CI 11.0–14.2); **~3 million**
+  adults aged 40+ have vision-threatening DR — a leading cause of *preventable*
+  blindness ([SMART India, *Lancet Global Health* 2022](https://www.thelancet.com/journals/langlo/article/PIIS2214-109X(22)00411-9/fulltext)).
+- Early detection, timely treatment and follow-up can reduce the risk of severe
+  vision loss by **up to 95%** (US National Eye Institute).
+- India has **~15 ophthalmologists per million** people, against 38.6 per million
+  in developed countries — and the shortage is one of *distribution*, not just
+  totals: district-level ratios range from **1:6,309 (Hyderabad) to 1:193,822
+  (Nalgonda)** within a single state (OJPHI 2024;16:e50921).
+- **DR prevalence shows no significant urban–rural difference** (SMART India). Same
+  disease burden, ~30× less specialist access — the rural problem is **access to
+  screening**, not lower disease. This is precisely what Module 5 addresses.
+- Manual, in-person mass screening is logistically and economically infeasible at
+  national scale.
 
 ### 1.2 Why Existing AI Solutions Fall Short
 | Limitation | Consequence |
@@ -48,7 +64,11 @@ Fundus Image → [1] Quality Assessment & Enhancement
 ```
 
 ### Target Performance (Clinical Bar)
-- **Sensitivity > 90%** and **Specificity > 85%** for referable DR (ICDR Level 2+)
+- **Sensitivity > 90%** and **Specificity > 85%** for **referable DR**, defined as
+  **ICDR grade ≥ 2 *or* centre-involving macular oedema** — the same positive class
+  as IDx-DR's cleared `mtmDR` endpoint, so the comparison is like-for-like.
+  Frozen in [`config/clinical_definitions.json`](config/clinical_definitions.json);
+  reasoning in [docs/clinical_definitions.md](docs/clinical_definitions.md)
 - Grad-CAM outputs independently rated **"clinically useful"** by ophthalmologist reviewers
 - Validated against **published benchmarks** (IDRiD, Messidor-2, APTOS 2019 leaderboards) — integrated pipeline must **outperform single-technique baselines** (e.g., plain CNN classifier with no QA/segmentation stage)
 
@@ -80,7 +100,10 @@ Fundus Image → [1] Quality Assessment & Enhancement
   - 2 — Moderate NPDR *(referable threshold starts here)*
   - 3 — Severe NPDR
   - 4 — Proliferative DR
-- **Clinical operating point:** threshold tuned so Sensitivity > 90%, Specificity > 85% for the binary "referable vs. not" decision, reported via ROC/AUC and a confusion matrix per class.
+- **DME risk grade (0–2)** — derived geometrically from Module 2's hard-exudate mask,
+  fovea centre and disc diameter, not a separately trained model. Required because
+  referable DR includes centre-involving oedema.
+- **Clinical operating point:** threshold tuned so Sensitivity > 90%, Specificity > 85% for the binary "referable vs. not" decision, reported via ROC/AUC and a confusion matrix per class. Three operating points and three endpoints are reported — see [docs/clinical_definitions.md](docs/clinical_definitions.md) §4. Thresholds are **frozen before Messidor-2 is read**.
 - **Toolboxes:** Deep Learning Toolbox, Statistics and Machine Learning Toolbox
 
 ### Module 4 — Explainability Module

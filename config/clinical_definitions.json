@@ -1,0 +1,66 @@
+{
+  "_comment": "THE CLINICAL CONTRACT. Owned by R3 (Abhigyat). Defines the ICDR scale, the referable-DR endpoints, and the operating-point rules. Phase 3 and Phase 6 code MUST read endpoint definitions from this file rather than hardcoding a threshold, so that the definition used to produce a number is always recoverable from git history. See docs/clinical_definitions.md for the reasoning and citations.",
+  "_version": "1.0.0",
+  "_frozen": "2026-09-11",
+  "_owner": "R3 - clinical research",
+  "_change_policy": "Endpoint DEFINITIONS below are frozen as of Phase 0 and must not change after Phase 3 training begins. Numeric operating-point THRESHOLDS are null until Phase 3 selects them on the validation split; once written they are frozen by commit and must not be re-tuned. Messidor-2 must not be read before both are frozen (project hard rule 1).",
+
+  "icdr_scale": {
+    "_source": "International Clinical Diabetic Retinopathy Disease Severity Scale (Wilkinson et al., Ophthalmology 2003)",
+    "dr_grades": {
+      "0": "No apparent retinopathy",
+      "1": "Mild NPDR - microaneurysms only",
+      "2": "Moderate NPDR - more than MA only, less than severe",
+      "3": "Severe NPDR - 4-2-1 rule, no proliferative signs",
+      "4": "Proliferative DR - neovascularization or vitreous/preretinal haemorrhage"
+    },
+    "dme_grades": {
+      "_source": "IDRiD 'Risk of macular edema' column. Graded by shortest distance from the macula centre to any hard exudate.",
+      "0": "No apparent hard exudates",
+      "1": "Hard exudates present, all further than one optic disc diameter from the macula centre",
+      "2": "Hard exudates within one optic disc diameter of the macula centre (clinically significant macular oedema risk)"
+    }
+  },
+
+  "endpoints": {
+    "primary_referable": {
+      "name": "Referable DR (DR or DME)",
+      "rule": "dr_grade >= 2 OR dme_grade >= 2",
+      "rationale": "Matches the mtmDR positive class used by IDx-DR (more-than-mild DR and/or clinically significant macular oedema) and the referable class used by Gulshan et al. This is the endpoint the headline Sens/Spec claim is made on.",
+      "comparable_to": ["IDx-DR mtmDR (Abramoff 2018)", "Gulshan 2016 RDR"],
+      "targets": { "sensitivity": 0.90, "specificity": 0.85 }
+    },
+    "secondary_dr_only": {
+      "name": "Referable DR (DR grade only)",
+      "rule": "dr_grade >= 2",
+      "rationale": "Reported alongside the primary endpoint. This is the only endpoint scoreable on APTOS, which ships no DME labels. Not comparable to IDx-DR or Gulshan - state that wherever it appears.",
+      "comparable_to": [],
+      "targets": { "sensitivity": 0.90, "specificity": 0.85 }
+    },
+    "referral_or_recapture": {
+      "name": "Needs a human (referable OR ungradable)",
+      "rule": "primary_referable OR quality_gate_rejected",
+      "rationale": "The endpoint that actually describes our deployed system, because Module 1 can reject an image rather than grade it. Gulshan et al. report this separately and performance drops (AUC 0.991 -> 0.974); ours should be expected to drop too. Reporting only the clean-image endpoint would overstate field performance.",
+      "comparable_to": ["Gulshan 2016 'RDR or ungradable' (EyePACS-1: AUC 0.974)"],
+      "targets": null
+    }
+  },
+
+  "operating_points": {
+    "_policy": "Two operating points are selected on the Phase 3 validation split and frozen here BEFORE Messidor-2 is read. Report both, as Gulshan et al. do. A threshold re-tuned after seeing Messidor-2 invalidates the external validation claim.",
+    "high_sensitivity": { "threshold": null, "selection_rule": "maximise specificity subject to validation sensitivity >= 0.95", "frozen_commit": null },
+    "operating": { "threshold": null, "selection_rule": "maximise Youden J subject to validation sensitivity >= 0.90 and specificity >= 0.85", "frozen_commit": null },
+    "high_specificity": { "threshold": null, "selection_rule": "maximise sensitivity subject to validation specificity >= 0.98", "frozen_commit": null }
+  },
+
+  "reporting_rules": {
+    "_comment": "project hard rule 3 - every reported metric carries its evaluation protocol.",
+    "required_with_every_metric": ["dataset and split", "endpoint name from this file", "operating point name and numeric threshold", "whether ungradable images were excluded or counted as positive", "confidence interval and method"],
+    "dme_label_availability": {
+      "aptos2019": "none - DR grade only. Secondary endpoint only.",
+      "idrid": "yes - 'Risk of macular edema' 0/1/2 for all 516 grading images.",
+      "messidor2": "yes - 'adjudicated_dme' in the Krause et al. reference standard (must be downloaded, blocker B1).",
+      "drive": "not applicable - vessel segmentation only."
+    }
+  }
+}
