@@ -46,6 +46,7 @@ function th = calibrateQualityThresholds(opts)
         'Messidor2', cfg.messidor2.images};
 
     sharp = []; illum = []; glare = []; contrast = []; meanInt = []; fovDia = [];
+    noise = [];
     band = strings(0,1); corpusOf = strings(0,1);
 
     for k = 1:size(corpora, 1)
@@ -72,6 +73,7 @@ function th = calibrateQualityThresholds(opts)
                 continue
             end
             sharp(end+1,1)    = q.sharpness.normalised;   %#ok<AGROW>
+            noise(end+1,1)    = q.noise;                  %#ok<AGROW>
             illum(end+1,1)    = q.illum.uniformityCV;     %#ok<AGROW>
             glare(end+1,1)    = q.illum.glareFraction;    %#ok<AGROW>
             contrast(end+1,1) = q.illum.contrast;         %#ok<AGROW>
@@ -146,10 +148,12 @@ function th = calibrateQualityThresholds(opts)
     % is meaningless. Percentile calibration only works on metrics that vary
     % continuously; this one needs a physical floor.
     %
-    % Floors: under 0.5% of the retina blown white is ignorable; above 2% a
-    % specular patch is large enough to hide lesions.
-    GLARE_BORDERLINE_FLOOR = 0.005;
-    GLARE_REJECT_FLOOR     = 0.02;
+    % Floors: the degradation study found the previous floors (0.5%/2%) only
+    % rejected synthetic glare at maximum severity - a detection floor of 1.000,
+    % i.e. essentially never. Halved so a patch large enough to obscure the
+    % macula is caught.
+    GLARE_BORDERLINE_FLOOR = 0.002;
+    GLARE_REJECT_FLOOR     = 0.008;
     th.glare = struct( ...
         'metric', ['fraction of FOV pixels with ALL channels >= 240/255 ' ...
                    '(achromatic blow-out). NOT any-channel: the red channel ' ...
@@ -164,6 +168,16 @@ function th = calibrateQualityThresholds(opts)
     th.contrast = struct( ...
         'metric', 'p99 - p1 of luminance inside the FOV, [0,1] scale', ...
         'reject_below', round(prctile(contrast, 2), 4));
+
+    % Noise: percentile-based, but floored. The curated corpora are cleaner
+    % than field captures, so a pure p98 would set the bar far too low to ever
+    % fire on a real handheld image.
+    th.noise = struct( ...
+        'metric', ['MAD-based sensor noise estimate inside the FOV, [0,1] ' ...
+                   'luminance. Gated separately because noise RAISES the ' ...
+                   'sharpness score (rho = +0.67) and is otherwise invisible.'], ...
+        'reject_above', max(0.030, round(prctile(noise, 99), 4)), ...
+        'borderline_above', max(0.012, round(prctile(noise, 90), 4)));
 
     th.exposure = struct( ...
         'metric', 'mean luminance inside the FOV, [0,1] scale', ...

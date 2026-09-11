@@ -131,6 +131,51 @@ function d = gateImage(q, th)
         end
     end
 
+    % ---- noise -----------------------------------------------------------
+    % Checked explicitly because the sharpness metric gets noise BACKWARDS:
+    % noise is high-frequency energy, so a noisy image scores as sharper
+    % (measured Spearman rho = +0.67 against injected noise). Without this
+    % check, heavy sensor noise passes the gate at every severity.
+    if isfield(q, 'noise')
+        if q.noise > th.noise.reject
+            reasons(end+1) = mkReason('excessive_noise', 'reject', ...
+                'Image is too grainy to read. Increase illumination so the camera can use a lower gain, then retake.', ...
+                q.noise, th.noise.reject);
+        elseif q.noise > th.noise.borderline
+            reasons(end+1) = mkReason('noisy', 'borderline', ...
+                'Image is grainy - attempting correction.', ...
+                q.noise, th.noise.borderline);
+        end
+    end
+
+    % ---- suppress misleading focus advice --------------------------------
+    % The sharpness metric depends on gradient magnitude, so ANY defect that
+    % flattens the image - underexposure, overexposure, veiling haze - drives
+    % it down and trips 'out_of_focus'. The degradation study found darken,
+    % brighten and haze all reporting focus as the reject reason.
+    %
+    % That is not a harmless mislabel. "Refocus on the vessels at the optic
+    % disc and retake" sends a technician to do the one thing that will not
+    % help; they retake and get the same dark frame. The message a technician
+    % acts on has to name the real fault.
+    %
+    % When exposure, contrast or noise is out of range the focus reading is not
+    % trustworthy, so the focus reason is dropped in favour of the root cause.
+    % The root cause must itself be a REJECT before it displaces the focus
+    % reason. Allowing a borderline cause to do it silently downgrades the
+    % verdict: darkening lowers contrast, which raised a borderline
+    % 'low_contrast', which cancelled the 'out_of_focus' reject and let heavily
+    % underexposed images through. The degradation study caught this as
+    % darken and haze regressing from a 0.625 detection floor to never.
+    rootCauseCodes = {'underexposed', 'overexposed', 'large_dark_region', ...
+                      'excessive_noise'};
+    isRootCause = ismember({reasons.code}, rootCauseCodes) & ...
+                  strcmp({reasons.severity}, 'reject');
+    if any(isRootCause)
+        keep = ~ismember({reasons.code}, {'out_of_focus', 'soft_focus'});
+        reasons = reasons(keep);
+    end
+
     % ---- resolve ---------------------------------------------------------
     if isempty(reasons)
         d.decision = 'pass';

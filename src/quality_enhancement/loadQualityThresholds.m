@@ -70,6 +70,14 @@ function th = loadQualityThresholds(forceReload)
 
     th.contrast.reject = raw.contrast.reject_below;
 
+    if isfield(raw, 'noise')
+        th.noise.reject     = raw.noise.reject_above;
+        th.noise.borderline = raw.noise.borderline_above;
+    else
+        th.noise.reject     = 0.030;
+        th.noise.borderline = 0.012;
+    end
+
     th.exposure.darkReject         = raw.exposure.dark_reject;
     th.exposure.brightReject       = raw.exposure.bright_reject;
     th.exposure.darkFractionReject = raw.exposure.dark_fraction_reject;

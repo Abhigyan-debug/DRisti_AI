@@ -76,7 +76,7 @@ function [out, applied] = enhanceImage(img, q, opts)
     % Verified visually - an APTOS image enhanced with CLAHE and no prior
     % denoise showed clear background grain that was absent in the original.
     needClahe = opts.force || q.illum.contrast < th.contrast.reject * 1.5;
-    noiseLevel = estimateNoise(L, mask);
+    noiseLevel = q.noise;   % measured once in ASSESSQUALITY
 
     % Denoise whenever the image is measurably noisy, OR whenever CLAHE is
     % about to run - amplification makes even modest noise consequential.
@@ -162,21 +162,3 @@ function L = denoiseChannel(L, fovDiameter)
                        'DegreeOfSmoothing', 0.002);
 end
 
-
-function n = estimateNoise(L, mask)
-%ESTIMATENOISE  Robust noise estimate from high-frequency residual.
-%
-%   Median absolute deviation of the Laplacian response, scaled to a standard
-%   deviation. The MAD is used rather than the standard deviation because
-%   vessels and lesions are legitimate high-frequency content and would
-%   otherwise be counted as noise.
-
-    lap = imfilter(L, [0 -1 0; -1 4 -1; 0 -1 0] / 4, 'replicate');
-    inner = imerode(mask, strel('square', 7));
-    vals = lap(inner);
-    if numel(vals) < 100
-        n = 0;
-        return
-    end
-    n = 1.4826 * median(abs(vals - median(vals)));
-end

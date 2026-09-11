@@ -12,6 +12,8 @@ function q = assessQuality(img, opts)
 %     q.fov          struct from DETECTFOV
 %     q.sharpness    struct from MEASURESHARPNESS
 %     q.illum        struct from MEASUREILLUMINATION
+%     q.noise        sensor-noise estimate (MEASURENOISE). Checked separately
+%                    because noise RAISES the sharpness score - see MEASURENOISE.
 %     q.sizePx       [height width] of the input
 %     q.elapsed      seconds taken - Module 5 needs a real per-image cost, not
 %                    a guess, to model AI throughput
@@ -42,5 +44,6 @@ function q = assessQuality(img, opts)
     q.fov       = detectFOV(img);
     q.sharpness = measureSharpness(img, q.fov, canonical);
     q.illum     = measureIllumination(img, q.fov);
+    q.noise     = measureNoise(img, q.fov);
     q.elapsed   = toc(t0);
 end
