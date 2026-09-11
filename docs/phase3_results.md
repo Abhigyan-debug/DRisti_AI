@@ -122,10 +122,75 @@ against.
 
 ---
 
-## 3. What is NOT done
+## 3. Messidor-2 external validation — THE HEADLINE DOES NOT GENERALISE
 
-- **Messidor-2 external validation.** Untouched by design. Thresholds are frozen
-  and ready; this is a single inference run when you choose to spend it.
+*Run once, 2026-09-12, with thresholds frozen beforehand. 1748 images, 4 ungradable,
+1744 scored. Reference standard: Krause et al. adjudicated (3 retina specialists).*
+
+### The result, at the frozen operating point
+
+| | APTOS validation | **Messidor-2 external** |
+|---|---|---|
+| Sensitivity | 90.3% | **31.2%** [27.1–35.5] |
+| Specificity | 95.9% | **99.5%** [99.0–99.8] |
+| AUC | 0.9891 | **0.8848** |
+| Referable prevalence | 40.7% | 26.7% |
+
+**This is the valid, reportable external-validation result.** The threshold was frozen
+before the set was read and was not adjusted afterwards. Sensitivity of 31% means the
+system as configured would miss roughly two thirds of referable patients on this
+population.
+
+All three endpoints agree (primary 31.2%, DR-only 31.7%, referral-or-recapture 31.8%),
+so this is not an artifact of the DME encoding.
+
+### Why it failed — two distinct causes
+
+**1. Severe calibration / domain shift.** The score distribution collapses:
+
+| | Median referable score | Median non-referable |
+|---|---|---|
+| Messidor-2 | **0.0992** | 0.0033 |
+| Frozen threshold | **0.4033** | — |
+
+The frozen threshold sits roughly **4× above the median referable case**. Only 31.2%
+of genuinely referable images score above it. APTOS (Indian, 2019, modern cameras)
+and Messidor-2 (French, 2000s-era cameras) are different visual domains, and the raw
+softmax output is not comparable across them.
+
+**2. Genuine loss of discriminative power.** AUC falls 0.9891 → 0.8848. That is not
+only calibration — the model separates the classes less well on unseen equipment.
+
+**Post-hoc diagnostic — NOT a reportable operating point.** Had the threshold been
+chosen *on* Messidor-2 (0.0049), the same model would give Sens 90.1% / Spec 62.7%.
+Quoting that as a result would be tuning on the test set, which is precisely what this
+exercise was designed to avoid. It is recorded only because it separates the two
+causes: ranking largely survives, the operating point does not transfer, and even
+optimally placed the specificity would be far below the 95.9% seen internally.
+
+### What this means
+
+- **Do not claim 90.3% / 95.9% generalises.** It does not. That figure is internal
+  validation on a single Indian dataset.
+- **Confidence calibration is not a nice-to-have.** Platt/isotonic scaling — still
+  unimplemented, and listed on the deck as a feature — is the direct fix for cause 1.
+  This failure is the argument for building it.
+- **Most teams never discover this**, because they tune on their test set and report
+  the tuned number. Finding it required holding the set out and freezing the
+  threshold first.
+
+### The honest claim
+
+> "Internally we reach 90.3% sensitivity at 95.9% specificity. On a truly held-out
+> external benchmark, with the operating point frozen in advance, that collapses to
+> 31.2% sensitivity — the model's ranking largely survives (AUC 0.885) but its
+> calibration does not transfer across imaging domains. We report this because it is
+> the result our protocol produced, and it defines exactly what has to be fixed
+> before any deployment claim: domain-robust calibration."
+
+---
+
+## 4. What is NOT done
 - **The hybrid lesion-feature model.** Only the single-technique baseline exists,
   so the README's "integrated beats single-technique" claim is **not yet
   supported by a trained comparison**. The achievable version is Module 1 gate +

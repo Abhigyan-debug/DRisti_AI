@@ -106,7 +106,33 @@ a judge can puncture with a single question.
 
 ---
 
-## 🟢 THE BIGGEST MISS — you are underselling real results
+## 🔴 UPDATE 2026-09-12 — Messidor-2 has now been run, and it changes the deck
+
+External validation at the frozen operating point: **Sensitivity 31.2%**,
+Specificity 99.5%, AUC 0.8848 — against 90.3% / 95.9% / 0.9891 internally.
+
+**Any slide implying the internal number generalises is now known to be wrong.**
+The cause is calibration shift across imaging domains: the frozen threshold (0.4033)
+sits ~4× above the median referable score on Messidor-2 (0.0992). Full analysis in
+[phase3_results.md](phase3_results.md) §3.
+
+This makes the "Confidence Score Calibration" item on the Tech Stack slide urgent
+rather than cosmetic: it is the direct fix for the failure, and it is not implemented.
+
+**How to present it.** Do not hide it and do not lead with it. Lead with the internal
+result, then:
+
+> "We held Messidor-2 out entirely and froze our operating point before touching it.
+> Sensitivity fell to 31.2% — the model still ranks well (AUC 0.885) but its
+> calibration does not transfer across imaging domains. We found this because our
+> protocol was designed to be able to find it."
+
+A team that discovers its own generalisation gap is more credible than one that
+reports a single internal number. But the gap must be stated, not implied.
+
+---
+
+## 🟢 Underselling the internal results (still true, with the caveat above)
 
 Slide 3 lists ">90% Sensitivity & >85% Specificity" as a **benefit/target**.
 
