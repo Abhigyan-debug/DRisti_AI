@@ -255,6 +255,50 @@ it matches how clinical AI is actually rolled out.
 
 ---
 
+## 3c. Multi-domain training — helps the domains you train on, not a third
+
+Unchecked Phase 3 item: "train/tune on APTOS **+ IDRiD**". Trained a second
+grader on APTOS train (2929) + IDRiD grading train (413), holding IDRiD **test**
+back so a clean probe survives. Identical architecture, wider photometric jitter
+to simulate camera variation.
+
+| Model | APTOS val (in-domain) | IDRiD test | **Messidor-2 (unseen by both)** |
+|---|---|---|---|
+| APTOS-only | AUC 0.9891 · Sens 90.3% · Spec 95.9% | AUC 0.8938 · Sens 75.0% | **AUC 0.8848** |
+| APTOS+IDRiD | AUC 0.9866 · Sens 90.3% · Spec 94.9% | AUC 0.9291 · Sens 89.1% | **AUC 0.8757** |
+
+### Read this carefully — the two transfer columns say opposite things
+
+**On IDRiD it looks like a large win**: AUC +0.035, sensitivity +14pp, at
+negligible in-domain cost. But **IDRiD train was in the training set**, so IDRiD
+test is a same-domain held-out split for that model, not a transfer test. It
+shows only that training on a domain helps on that domain.
+
+**On Messidor-2, which neither model has seen, it does not help** — AUC falls
+slightly, 0.8848 → 0.8757. AUC is threshold-free, so nothing is tuned here; this
+is a clean comparison of two fixed models.
+
+**Conclusion: two training domains did not buy generalisation to a third.** The
+intuition that "more domains ⇒ more robustness" is not supported at this scale.
+With two corpora the network appears to learn both appearances rather than an
+appearance-invariant representation.
+
+### Why this matters for the deployment story
+
+It closes the argument that began with the Messidor-2 failure:
+
+1. **Single-domain training fails on unseen cameras** — 90.3% → 31.2% sensitivity.
+2. **Adding a second training domain does not fix it** — helps that domain,
+   AUC on a third unseen domain unchanged-to-slightly-worse.
+3. **Per-site calibration does fix it** — ~200 labelled images per site recovers
+   90.0% sensitivity (§3b).
+
+So per-site calibration is not a workaround adopted for convenience; it is the
+option left standing after the alternative was built and measured. That is a
+much stronger claim than asserting it from first principles.
+
+---
+
 ## 4. What is NOT done
 - **The hybrid lesion-feature model.** Only the single-technique baseline exists,
   so the README's "integrated beats single-technique" claim is **not yet
