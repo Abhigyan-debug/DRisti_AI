@@ -299,6 +299,49 @@ much stronger claim than asserting it from first principles.
 
 ---
 
+## 3d. The hybrid model — the README's central claim does NOT hold
+
+*"Integrated pipeline must outperform single-technique baselines."* Tested
+directly: gradient-boosted ensemble over the CNN's referable score plus 18
+Module 2 lesion features, against the CNN alone, on identical images.
+
+| Arm | AUC |
+|---|---|
+| CNN alone (baseline) | **0.9853** |
+| CNN + lesion features (integrated) | 0.9795 (−0.0059) |
+| Lesion features **only**, no CNN | 0.8697 |
+
+### What this means, stated precisely
+
+**No measurable improvement.** The −0.0059 delta sits inside the ~0.01 sampling
+noise on 300 validation images, so it should not be reported as the integrated
+model being worse either — it is indistinguishable from zero. The claim is not
+supported; it is also not refuted in the other direction.
+
+**The lesion features are not noise.** On their own they reach AUC 0.8697 — real,
+independent diagnostic signal from detectors we already know are weak. Their top
+contributors are clinically sensible: after the CNN score, the most important
+feature is `hardExFoveaDist`, the exudate-to-fovea distance that defines referable
+DME, followed by exudate count and area.
+
+**They add nothing the CNN lacks.** A network at AUC 0.985 has already learned
+lesion-equivalent representations from pixels. Hand-crafted features computed from
+weaker detectors are a strictly coarser view of the same evidence.
+
+### The honest reframing
+
+Module 2's value in this pipeline is **explanatory, not predictive**. An evidence
+line reading *"hard exudates within 0.36 disc diameters of the fovea"* is
+clinically meaningful and auditable even though it does not move AUC. That is a
+defensible role for it — but it is a different claim from the one in the README,
+and the README's version should be corrected rather than repeated.
+
+Caveat: this was run on 600 train / 300 validation images for time. A larger
+sample might resolve a small true effect, but it would not change the conclusion
+that the effect is small.
+
+---
+
 ## 4. What is NOT done
 - **The hybrid lesion-feature model.** Only the single-technique baseline exists,
   so the README's "integrated beats single-technique" claim is **not yet
