@@ -185,12 +185,22 @@ Fundus Image → [1] Quality Assessment & Enhancement
 - [ ] Neovascularization heuristic detector
 - [ ] Consolidate all lesion outputs into a single structured feature vector per image
 
-### Phase 3 — DR Severity Grading Model
-- [ ] Build baseline end-to-end CNN classifier (for later "single technique" comparison)
-- [ ] Build hybrid lesion-feature + classifier model
-- [ ] Train/tune on APTOS + IDRiD; calibrate operating threshold for referable DR
-- [ ] Evaluate: sensitivity, specificity, AUC, per-class confusion matrix
-- [ ] Cross-validate against Messidor-2 (held-out benchmark)
+### Phase 3 — DR Severity Grading Model ✅ *complete; results in [docs/phase3_results.md](docs/phase3_results.md)*
+- [x] Baseline end-to-end CNN — ResNet-18 @ 640px. **Sens 90.3% / Spec 95.9%, AUC 0.9891**
+- [x] Hybrid lesion-feature model — built and measured. **Does not beat the baseline**
+      (0.9795 vs 0.9853, inside sampling noise). Lesion features alone reach AUC 0.870,
+      so they carry real signal, but add nothing a CNN at 0.985 has not already learned.
+- [x] Train on APTOS **+ IDRiD**; calibrate threshold — multi-domain training helps on
+      the domains trained on, **not on a third unseen one** (Messidor-2 AUC 0.885 → 0.876)
+- [x] Evaluate: sensitivity, specificity, AUC, per-class confusion matrix
+- [x] Cross-validate against Messidor-2 — **Sens 31.2% at the frozen threshold.**
+      Per-site calibration with ~200 labelled images recovers **90.0%**
+
+> ⚠️ **The "integrated outperforms single-technique" claim in §2 is NOT supported by
+> measurement.** We built it and tested it. Module 2's contribution is *explanatory*
+> (naming the finding behind a decision), not predictive. The quality gate likewise
+> costs 9.2pp specificity on APTOS for 0.7pp sensitivity. Correct the claim rather
+> than repeat it — details in [docs/phase3_results.md](docs/phase3_results.md).
 
 ### Phase 4 — Explainability & Reporting
 - [ ] Implement Grad-CAM/Grad-CAM++ on the trained grading network
