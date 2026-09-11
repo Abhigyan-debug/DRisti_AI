@@ -98,9 +98,23 @@ function e = segmentExudates(img, ctx)
         px = cc.PixelIdxList{k};
         sharpness = mean(gradMag(px));
         yellowness = mean(bStar(px));
-        % Thresholds are deliberately soft - this split is the least certain
-        % part of the detector and both classes feed the same DME distance.
-        if sharpness > prctile(gradMag(valid), 75) || yellowness > 25
+
+        % Scored, not OR'd. The original rule was
+        %     sharpness > p75  OR  yellowness > 25
+        % which sent essentially everything to the hard class: measured soft
+        % exudate area was exactly 0.0000 on every image tested, because
+        % passing EITHER loose condition was enough and almost every candidate
+        % passes one. An OR over two permissive tests is not a classifier.
+        %
+        % Both cues now vote on a normalised scale and the decision is on the
+        % combined score, so a region must be sharp-edged AND yellow to be
+        % called hard - which is what actually distinguishes a lipid deposit
+        % from a cotton-wool spot.
+        sharpScore  = sharpness / max(prctile(gradMag(valid), 75), eps);
+        yellowScore = yellowness / 25;
+        combined = 0.5 * min(sharpScore, 2) + 0.5 * min(yellowScore, 2);
+
+        if combined >= 1.0
             hardMask(px) = true;
         else
             softMask(px) = true;
