@@ -16,7 +16,12 @@ the endpoint definitions that Phase 3 trains against and Phase 6 reports.
 
 **DME is IN the referable class.**
 
-> **Referable DR = ICDR DR grade ≥ 2 *OR* DME risk grade = 2**
+> **Referable DR = ICDR DR grade ≥ 2 *OR* referable DME**
+>
+> where **referable DME = hard exudates within 1 optic disc diameter of the fovea
+> centre** — a *clinical* criterion, resolved to each dataset's own encoding via
+> [§3a](#3a-dme-is-one-finding-encoded-differently-per-dataset). **Never compare a raw
+> DME integer against a literal threshold.**
 
 with two further endpoints reported alongside it (§4).
 
@@ -92,6 +97,60 @@ Source: International Clinical Diabetic Retinopathy Disease Severity Scale
 
 ---
 
+## 3a. DME is one finding, encoded differently per dataset
+
+*Added 2026-09-11 as contract **v1.1.0**, closing blocker **B12**.*
+
+The first version of this contract wrote the DME clause as the literal
+`dme_grade >= 2`. That is **IDRiD's** scale. Messidor-2's `adjudicated_dme` is
+**binary 0/1**, so on the benchmark that matters most the clause matched nothing, the
+primary endpoint silently collapsed into the DR-only secondary, and **no error was
+raised** — a wrong number wearing the right label.
+
+### Why the two scales mean the same thing
+
+Both corpora apply the *same* clinical criterion and differ only in how they record
+it. Krause et al., who produced the Messidor-2 reference standard, state it directly:
+
+> "…hard exudates within 1 disc diameter was considered referable DME"
+
+and note their Messidor-2 (their *"Validation"*) set "used a standard of hard exudates
+within **1 DD of the fovea**." IDRiD's grade 2 is defined identically. So:
+
+| Dataset | Column | Scale | Referable DME is |
+|---|---|---|---|
+| IDRiD | `Risk of macular edema` | 0 / 1 / 2 | **`== 2`** |
+| Messidor-2 | `adjudicated_dme` | binary 0 / 1 | **`== 1`** |
+| APTOS | — | none | **not scoreable** → use the secondary endpoint, and say so |
+
+> **Grade 1 is not referable.** IDRiD grade 1 means exudates are present but *further*
+> than 1 DD from the macula. `>= 1` would wrongly refer them; the operator is `==`,
+> not `> 0`.
+
+> **The 4 ungradable Messidor-2 images** are not a DME value and must not be coerced
+> to 0. They are excluded from endpoints 1 and 2 and count as **positive** in
+> endpoint 3 — an image nobody can grade still needs a human. Report the gradable
+> denominator (1,744) explicitly; Gulshan's is 1,745, and an unexplained difference
+> looks like a mistake.
+
+### The shared caveat worth stating
+
+Krause et al. name it as a limitation of their own reference standard: they used
+**hard exudates as a proxy for DME**, which properly needs stereo imaging or OCT.
+IDRiD does the same. Our Module 2 derives DME the same way — exudate mask, fovea,
+disc diameter — so **our method matches the reference standard's method**. That is a
+point in our favour, but the proxy must be stated whenever a DME number is reported.
+
+### The general lesson
+
+The bug was not a wrong threshold; it was **encoding a clinical concept as a
+dataset-specific integer**. A rule that silently matches nothing is worse than one
+that crashes, because it still produces a plausible number. The contract now requires
+code evaluating the primary endpoint to **fail loudly** if a dataset has no DME
+mapping, rather than falling through to a DR-only result.
+
+---
+
 ## 3. A cautionary example — why §1's framing matters
 
 The AIDRSS multicentric India study (Dey et al., 2025, [arXiv:2501.05826](https://arxiv.org/abs/2501.05826))
@@ -122,7 +181,7 @@ Phase 3 and Phase 6 code must read them from there, never hardcode a threshold.
 
 | # | Endpoint | Rule | Comparable to | Scoreable on |
 |---|---|---|---|---|
-| **1** | **Referable DR** *(primary)* | `DR ≥ 2 OR DME = 2` | IDx-DR mtmDR; Gulshan RDR | IDRiD, Messidor-2 |
+| **1** | **Referable DR** *(primary)* | `DR ≥ 2 OR dme_referable` ([§3a](#3a-dme-is-one-finding-encoded-differently-per-dataset)) | IDx-DR mtmDR; Gulshan/Krause RDR | IDRiD, Messidor-2 |
 | 2 | Referable DR, DR-only | `DR ≥ 2` | *nothing* — state this | APTOS, IDRiD, Messidor-2 |
 | 3 | Needs a human | endpoint 1 **OR** quality-gate reject | Gulshan "RDR or ungradable" | IDRiD, Messidor-2 |
 

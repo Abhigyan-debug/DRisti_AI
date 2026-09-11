@@ -1,9 +1,20 @@
 {
   "_comment": "THE CLINICAL CONTRACT. Owned by R3 (Abhigyat). Defines the ICDR scale, the referable-DR endpoints, and the operating-point rules. Phase 3 and Phase 6 code MUST read endpoint definitions from this file rather than hardcoding a threshold, so that the definition used to produce a number is always recoverable from git history. See docs/clinical_definitions.md for the reasoning and citations.",
-  "_version": "1.0.0",
+  "_version": "1.1.0",
   "_frozen": "2026-09-11",
   "_owner": "R3 - clinical research",
   "_change_policy": "Endpoint DEFINITIONS below are frozen as of Phase 0 and must not change after Phase 3 training begins. Numeric operating-point THRESHOLDS are null until Phase 3 selects them on the validation split; once written they are frozen by commit and must not be re-tuned. Messidor-2 must not be read before both are frozen (project hard rule 1).",
+  "_amendments": [
+    {
+      "version": "1.1.0",
+      "date": "2026-09-11",
+      "blocker": "B12",
+      "clinical_intent_changed": false,
+      "summary": "Fixed an ENCODING bug, not a definition change. v1.0.0 expressed referable DME as the literal 'dme_grade >= 2', which is IDRiD's 0/1/2 scale. Messidor-2's adjudicated_dme is binary 0/1, so the clause matched nothing there and the primary endpoint silently degraded to the DR-only secondary - wrong number, right label, no error raised. Replaced the dataset-specific integer with a semantic predicate (dme_referable) plus a per-dataset encoding map. The clinical meaning of 'referable DME' is unchanged, so this is permitted under the change policy and lands before Phase 3 begins.",
+      "why_the_scales_are_equivalent": "Both datasets use the SAME clinical criterion - hard exudates within 1 optic disc diameter of the fovea/macula centre - they just encode it differently. IDRiD spreads it over 0/1/2 (grade 2 = within 1 DD); Krause et al. collapsed it to a binary referable flag for Messidor-2. Verbatim from Krause et al.: 'hard exudates within 1 disc diameter was considered referable DME', and the Messidor-2 (their 'Validation') set 'used a standard of hard exudates within 1 DD of the fovea'. So IDRiD==2 and Messidor-2==1 denote the same finding.",
+      "source": "Krause et al., Ophthalmology 125(8):1264-1272 (2018), arXiv:1710.01711"
+    }
+  ],
 
   "icdr_scale": {
     "_source": "International Clinical Diabetic Retinopathy Disease Severity Scale (Wilkinson et al., Ophthalmology 2003)",
@@ -22,12 +33,40 @@
     }
   },
 
+  "dme_encoding": {
+    "_comment": "B12 fix. 'Referable DME' is ONE clinical finding - hard exudates within 1 optic disc diameter of the fovea centre - but each corpus encodes it on its own scale. Resolve dme_referable through this map; NEVER compare a raw DME integer against a literal threshold, because the same integer means different things in different datasets. A dataset absent from this map has no DME labels: the primary endpoint is NOT scoreable there and code must fall back to secondary_dr_only EXPLICITLY and say so in the output, never silently.",
+    "criterion": "Hard exudates within 1 optic disc diameter of the fovea / macula centre.",
+    "shared_limitation": "Both corpora use hard exudates as a PROXY for DME rather than OCT - Krause et al. name this as a limitation of their own reference standard. Our Module 2 derives DME the same way (exudate mask + fovea + disc diameter), so our method matches the reference standard's method. State the proxy when reporting DME numbers.",
+    "per_dataset": {
+      "idrid": {
+        "column": "Risk of macular edema",
+        "scale": "0 / 1 / 2",
+        "dme_referable": "value == 2",
+        "note": "Grade 1 = hard exudates present but FURTHER than 1 DD from the macula - present but NOT referable. Do not treat >=1 as referable."
+      },
+      "messidor2": {
+        "column": "adjudicated_dme",
+        "scale": "binary 0 / 1",
+        "dme_referable": "value == 1",
+        "note": "Krause et al. adjudicated this directly as referable/not-referable using the 1 DD criterion, so 1 here == 2 in IDRiD. Blank/missing = ungradable (4 images), which belongs to referral_or_recapture, NOT to a DME value."
+      },
+      "aptos2019": {
+        "column": null,
+        "scale": null,
+        "dme_referable": null,
+        "note": "No DME labels. primary_referable is NOT scoreable on APTOS - use secondary_dr_only and label it as not comparable to Gulshan/IDx-DR."
+      }
+    }
+  },
+
   "endpoints": {
     "primary_referable": {
       "name": "Referable DR (DR or DME)",
-      "rule": "dr_grade >= 2 OR dme_grade >= 2",
-      "rationale": "Matches the mtmDR positive class used by IDx-DR (more-than-mild DR and/or clinically significant macular oedema) and the referable class used by Gulshan et al. This is the endpoint the headline Sens/Spec claim is made on.",
-      "comparable_to": ["IDx-DR mtmDR (Abramoff 2018)", "Gulshan 2016 RDR"],
+      "rule": "dr_grade >= 2 OR dme_referable",
+      "rule_note": "dme_referable is resolved via the dme_encoding map above, per dataset. It is deliberately NOT a numeric comparison - see amendment 1.1.0 (B12).",
+      "rationale": "Matches the mtmDR positive class used by IDx-DR (more-than-mild DR and/or clinically significant macular oedema) and the referable class used by Gulshan et al. Krause et al. state it identically: referable DR is 'moderate or worse DR or referable DME'. This is the endpoint the headline Sens/Spec claim is made on.",
+      "comparable_to": ["IDx-DR mtmDR (Abramoff 2018)", "Gulshan 2016 RDR", "Krause 2018 RDR"],
+      "scoreable_on": ["idrid", "messidor2"],
       "targets": { "sensitivity": 0.90, "specificity": 0.85 }
     },
     "secondary_dr_only": {
@@ -55,12 +94,21 @@
 
   "reporting_rules": {
     "_comment": "project hard rule 3 - every reported metric carries its evaluation protocol.",
-    "required_with_every_metric": ["dataset and split", "endpoint name from this file", "operating point name and numeric threshold", "whether ungradable images were excluded or counted as positive", "confidence interval and method"],
+    "required_with_every_metric": ["dataset and split", "endpoint name from this file", "the DME encoding used for that dataset (see dme_encoding)", "operating point name and numeric threshold", "whether ungradable images were excluded or counted as positive", "confidence interval and method"],
     "dme_label_availability": {
       "aptos2019": "none - DR grade only. Secondary endpoint only.",
       "idrid": "yes - 'Risk of macular edema' 0/1/2 for all 516 grading images.",
-      "messidor2": "yes - 'adjudicated_dme' in the Krause et al. reference standard (must be downloaded, blocker B1).",
+      "messidor2": "yes - 'adjudicated_dme', binary, in the Krause et al. reference standard (must be downloaded, blocker B1).",
       "drive": "not applicable - vessel segmentation only."
+    },
+    "ungradable_handling": {
+      "_comment": "Messidor-2 ships 4 images the adjudicators could not grade (1748 total, 1744 gradable). They are not a DME value and must not be coerced to 0.",
+      "rule": "Exclude from primary_referable and secondary_dr_only; count as POSITIVE in referral_or_recapture. Always report the gradable denominator alongside the metric.",
+      "rationale": "An image nobody can grade still sends the patient to a human - that is what endpoint 3 measures. Silently dropping these 4 would also make our denominator differ from Gulshan's 1745 without saying so."
+    },
+    "implementation_check": {
+      "_comment": "B12 was a silent-failure bug: a threshold that matched nothing still produced a plausible-looking number. Guard against the class, not just the instance.",
+      "rule": "Any code evaluating primary_referable MUST assert that the dataset appears in dme_encoding.per_dataset with a non-null dme_referable, and MUST fail loudly otherwise rather than falling through to a DR-only result."
     }
   }
 }

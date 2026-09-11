@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -56,12 +57,15 @@ def load(path: Path) -> list[tuple[int, int]]:
     return pairs
 
 
-def report(split: str, pairs: list[tuple[int, int]], dme_referable: int, markdown: bool) -> dict:
+def report(split: str, pairs: list[tuple[int, int]], dme_referable: int, op: str, markdown: bool) -> dict:
     n = len(pairs)
     ct = Counter(pairs)
+    # Honour the contract's operator: IDRiD grade 1 is exudates present but FURTHER
+    # than 1 DD from the macula - present, yet NOT referable. "==" is not "> 0".
+    is_dme = (lambda d: d == dme_referable) if op == "==" else (lambda d: d >= dme_referable)
     dr_only = sum(v for (dr, _), v in ct.items() if dr >= 2)
-    dme_pos = sum(v for (_, dme), v in ct.items() if dme >= dme_referable)
-    both = sum(v for (dr, dme), v in ct.items() if dr >= 2 and dme >= dme_referable)
+    dme_pos = sum(v for (_, dme), v in ct.items() if is_dme(dme))
+    both = sum(v for (dr, dme), v in ct.items() if dr >= 2 and is_dme(dme))
     missed = dme_pos - both          # referable via DME, invisible to a DR-only rule
     combined = dr_only + missed
 
@@ -80,10 +84,10 @@ def report(split: str, pairs: list[tuple[int, int]], dme_referable: int, markdow
     print()
     rows = [
         (f"referable, DR-only rule (DR>=2)", dr_only),
-        (f"DME-referable (DME>={dme_referable})", dme_pos),
+        (f"DME-referable (DME {op} {dme_referable})", dme_pos),
         ("both", both),
         (">> MISSED by a DR-only rule (DME-only referrals)", missed),
-        (f"referable, combined rule (DR>=2 OR DME>={dme_referable})", combined),
+        (f"referable, combined rule (DR>=2 OR DME {op} {dme_referable})", combined),
     ]
     width = max(len(label) for label, _ in rows)
     for label, value in rows:
@@ -100,10 +104,26 @@ def main() -> int:
     args = ap.parse_args()
 
     # The DME grade that counts as referable comes from the frozen clinical contract,
-    # never from a literal here - see project hard rule 3.
-    rule = json.loads(DEFS.read_text(encoding="utf-8"))["endpoints"]["primary_referable"]["rule"]
-    dme_referable = int(rule.split("dme_grade >=")[1].strip().rstrip(")")) if "dme_grade >=" in rule else 2
-    print(f"referable rule (from config/clinical_definitions.json): {rule}")
+    # never from a literal here - see project hard rule 3. Resolve it through the
+    # per-dataset encoding map: IDRiD's scale is 0/1/2, Messidor-2's is binary, and
+    # assuming one covers the other is exactly what blocker B12 was.
+    defs = json.loads(DEFS.read_text(encoding="utf-8"))
+    rule = defs["endpoints"]["primary_referable"]["rule"]
+    encoding = defs["dme_encoding"]["per_dataset"].get("idrid", {})
+    expr = encoding.get("dme_referable")
+    if not expr:
+        print("IDRiD has no dme_referable mapping in config/clinical_definitions.json - "
+              "cannot compute the cross-tab without guessing a scale.", file=sys.stderr)
+        return 1
+    # Mapping is a tiny declarative expression ("value == 2"); parse it rather than
+    # eval it, and refuse anything unrecognised instead of falling back to a default.
+    m = re.fullmatch(r"value\s*(==|>=)\s*(\d+)", expr.strip())
+    if not m:
+        print(f"unrecognised IDRiD dme_referable expression: {expr!r}", file=sys.stderr)
+        return 1
+    op, dme_referable = m.group(1), int(m.group(2))
+    print(f"referable rule (from config/clinical_definitions.json v{defs['_version']}): {rule}")
+    print(f"  IDRiD dme_referable: {expr}")
 
     root = resolve_data_root(args.data_root)
     results = {}
@@ -114,7 +134,7 @@ def main() -> int:
                   f"  IDRiD grading labels are not on this machine. This script needs only\n"
                   f"  that one CSV - no images. See docs/datasets.md section 1.", file=sys.stderr)
             return 1
-        results[split] = report(split, load(path), dme_referable, args.markdown)
+        results[split] = report(split, load(path), dme_referable, op, args.markdown)
 
     total_missed = sum(r["missed_by_dr_only"] for r in results.values())
     total_n = sum(r["n"] for r in results.values())
