@@ -193,7 +193,45 @@ rate 12% vs. measured 10.9%; 1 Mbps uplink sits inside the 1/5/20 sweep). One re
 divergence needs a decision: **`imagesPerPatient` 4 (2-field × 2 eyes) vs. 2
 (macula-centric, per AIDRSS)** — it doubles the upload payload.
 
-### B12 — DME scale mismatch between contract and Messidor-2 🔴 *(new, 2026-09-11)*
+### B12 — DME scale mismatch between contract and Messidor-2 ✅ **Resolved 2026-09-11**
+**Fixed in contract v1.1.0** (`config/clinical_definitions.json`), amendment logged in
+`_amendments`. Permitted under the change policy: Phase 3 has not begun, and the
+**clinical intent did not change** — only its encoding.
+
+**What changed:** the literal `dme_grade >= 2` became the semantic predicate
+`dme_referable`, resolved through a new per-dataset `dme_encoding` map
+(IDRiD `== 2`, Messidor-2 `== 1`, APTOS `null`).
+
+**Why the two scales are equivalent — now sourced, not assumed.** Both corpora apply
+the same criterion and only record it differently. Krause et al., who produced the
+Messidor-2 standard, write that *"hard exudates within 1 disc diameter was considered
+referable DME"*, and that their Messidor-2 set used *"hard exudates within 1 DD of the
+fovea"* — identical to IDRiD's grade 2 definition.
+(Krause et al., *Ophthalmology* 125(8):1264–1272, 2018; [arXiv:1710.01711](https://arxiv.org/abs/1710.01711))
+
+**Three things the fix added beyond the one-line mapping:**
+- **Grade 1 is not referable.** IDRiD grade 1 = exudates *further* than 1 DD from the
+  macula. The operator is `==`, not `>= 1` — `>= 1` would over-refer.
+- **The 4 ungradable Messidor-2 images** are not a DME value and must not be coerced
+  to 0: excluded from endpoints 1–2, **positive** in endpoint 3. Report the 1,744
+  denominator explicitly (Gulshan's is 1,745).
+- **Fail loudly.** Code evaluating the primary endpoint must assert the dataset has a
+  DME mapping and error out otherwise, rather than falling through to a DR-only
+  result. The bug class — a rule that silently matches nothing still returns a
+  plausible number — is now guarded, not just this instance.
+
+`tools/idrid_dme_crosstab.py` was also fixed: it parsed the old rule string and would
+have silently fallen back to a hardcoded `2`, which is the same failure mode.
+
+> **One process note.** Diagnosing this required reading Messidor-2's label *values*
+> (1593/151/4 and the 8 DME-only cases), which touches the held-out benchmark ahead of
+> Phase 6. It was the right call — it caught a wrong headline number — but it should be
+> **declared in the Phase 6 write-up** rather than left unrecorded: at freeze time we
+> knew the DME marginal and the DME-only count. It does not contaminate the DR labels
+> or any threshold. Reading the *schema* alone would have been enough to find the bug;
+> prefer that next time.
+
+#### (original) 🔴
 **Blocks:** the primary endpoint on the benchmark where the headline claim is made.
 **Owner:** Abhigyat (R3) — the contract is frozen, so this is R3's call · **Effort:** one line
 
