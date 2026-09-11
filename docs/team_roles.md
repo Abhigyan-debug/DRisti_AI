@@ -58,16 +58,23 @@ has ever been executed.
 **Owns:** the clinical argument and every number that reaches a slide.
 **Phases:** 0 (done, see [literature_benchmarks.md](literature_benchmarks.md)), 4, 6.
 
-- Guards the ICDR definitions and the referable-DR threshold
-- Owns the **DME decision** ([open question](literature_benchmarks.md) §6) — this
-  determines whether our sensitivity is comparable to published work at all
-- Sources the Simulink model's bandwidth/staffing assumptions from published
-  rural telemedicine studies, with citations
-- Recruits the ophthalmologist reviewer for the Grad-CAM usefulness rating
-- Fixes the two [unverified] epidemiology claims in the README
+- [x] Guards the ICDR definitions and the referable-DR threshold →
+      `config/clinical_definitions.json` + [clinical_definitions.md](clinical_definitions.md)
+- [x] **DME decision** ✅ *2026-09-11* — **DME is IN**: referable = ICDR ≥ 2 OR
+      DME risk = 2, matching IDx-DR's `mtmDR` class. Closed blocker B3.
+- [x] Sourced the Simulink model's bandwidth/staffing assumptions →
+      `config/telemedicine_parameters.json` + [telemedicine_parameters.md](telemedicine_parameters.md),
+      every value tagged SOURCED / DERIVED / ASSUMED. Natik unblocked.
+- [x] Fixed the two [unverified] README epidemiology claims ✅ — one dropped as
+      untraceable, one re-attributed. Closed blocker B7.
+- [ ] **Recruits the ophthalmologist reviewer** for the Grad-CAM usefulness rating —
+      instrument ready at [gradcam_review_protocol.md](gradcam_review_protocol.md).
+      **Longest lead time on the project and no technical dependency — start now.**
+- [ ] Verify the OJPHI workforce figures against full text (abstract-only today)
+- [ ] Get a real technician time-per-patient figure — the weakest Module 5 parameter
 
 **Needs:** no toolboxes. Needs literature access and, ideally, one clinician contact.
-**First task:** resolve the DME question — it blocks Phase 3 metric design.
+**First task:** ~~resolve the DME question~~ → **done.** Next: reviewer recruitment.
 
 ---
 
@@ -198,8 +205,10 @@ not lost time. Phase 6 pipeline integration stays with Abhigyan; only Phase 5 mo
 
 - **Module 5 skeleton** (Natik, R4) — stub `.slx` with placeholder parameters; get
   the queue topology right first
-- **Clinical/metric decisions** (Abhigyat, R3) — the DME question must land
-  *before* Phase 3, and Module 5's parameters are now needed sooner too
+- ~~**Clinical/metric decisions** (Abhigyat, R3)~~ ✅ **delivered 2026-09-11** — DME
+  call made, Module 5 parameters sourced, epidemiology claims fixed. R3's remaining
+  critical-path item is **ophthalmologist recruitment**, which has the longest lead
+  time on the project
 - **Deck skeleton** (Oshi, R5) — blanks where numbers go; it exposes which results
   actually matter
 

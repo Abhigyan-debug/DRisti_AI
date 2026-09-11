@@ -8,7 +8,9 @@ point we will tune to in Phase 3.
 
 Every number below was read out of the primary source (linked). Where a figure is
 widely repeated but we could not verify it against the source, it is marked
-**[unverified]** rather than quoted as fact.
+**[unverified]** rather than quoted as fact. Figures read from an **abstract only**
+(because the full text was paywalled or the publisher returned an empty body) are
+marked as such — they are usable for orientation but must be verified before a slide.
 
 ---
 
@@ -16,8 +18,14 @@ widely repeated but we could not verify it against the source, it is marked
 
 "Referable DR" (RDR) in the literature almost always means **moderate NPDR or
 worse, *or* referable diabetic macular oedema**. Note the DME clause — several
-published sensitivity figures include DME-only referrals, which our
-grade-only pipeline does not currently detect. See §6.
+published sensitivity figures include DME-only referrals.
+
+> **Resolved:** we match that definition. **Referable DR = ICDR ≥ 2 OR DME = 2.**
+> Decided 2026-09-11, frozen in
+> [`config/clinical_definitions.json`](../config/clinical_definitions.json);
+> full reasoning in [clinical_definitions.md](clinical_definitions.md). Our
+> sensitivity is therefore directly comparable to Gulshan and IDx-DR, which was the
+> whole point of the exercise.
 
 ### 1.1 Regulatory floor — IDx-DR (FDA De Novo, 2018)
 
@@ -208,15 +216,19 @@ a CI, not two bare numbers.
 
 ## 4. Epidemiology — corrections to our own README
 
-Checking the README's §1.1 claims against primary sources turned up two that
-should be updated before the pitch:
+**✅ Resolved 2026-09-11 (R3). All four claims are fixed in README §1.1** — blocker
+**B7 closed.** Record of what changed and why:
 
-| README says | Sourced figure | Note |
+| README said | Now says | Resolution |
 |---|---|---|
 | "77M+ diabetic adults" | **~101 million** | ICMR-INDIAB-17 found 11.4% diabetes prevalence; 77M is the older IDF estimate. Use the newer, larger number — it strengthens the case. |
 | "~18% of diabetics develop DR" | **12.5%** (95% CI 11.0–14.2) | SMART India, a population-based screening study — [Lancet Global Health (2022)](https://www.thelancet.com/journals/langlo/article/PIIS2214-109X(22)00411-9/fulltext). ~3 million people aged 40+ have vision-threatening DR. |
-| "1 ophthalmologist per 100,000 rural" | **[unverified]** | Could not confirm against a primary source. Either find a citation or drop the precise ratio. |
-| "early screening prevents ~90% of vision loss" | **[unverified]** | Widely repeated; trace to a source before putting it on a slide. |
+| "1 ophthalmologist per 100,000 rural" | **~15 per million nationally; 1:6,309 → 1:193,822 across districts** | The original ratio could not be traced to any primary source — **dropped**. Replaced with the sourced workforce figures from OJPHI 2024;16:e50921 (South India survey). The ~30× *within-state district spread* is a stronger argument than any national average, because it reframes the problem as maldistribution rather than absolute shortage. ⚠️ Read from the abstract only — full text not retrievable (see [telemedicine_parameters.md](telemedicine_parameters.md) §5). |
+| "early screening prevents ~90% of vision loss" | **"up to 95%", attributed to the US NEI** | The "90%" figure could not be traced to any trial. The specific trial results are narrower: DRS and ETDRS report roughly *50%* reductions in severe/moderate vision loss from photocoagulation. The "95%" figure is a US National Eye Institute public-health communication figure, repeated across its materials — **now attributed to NEI rather than stated as a trial result.** That attribution is the honest framing; do not present it as a clinical-trial endpoint. |
+
+**Method note:** the two originally-[unverified] claims were not "verified" — one was
+**dropped** and one was **re-attributed**. An unsourceable number that sounds precise
+is worse than a sourced range, because it is the one a judge will ask about.
 
 A further finding worth putting *in* the pitch: SMART India found **no
 significant urban–rural difference** in DR prevalence. The rural problem is
@@ -252,11 +264,14 @@ figures would weaken our submission, not strengthen it.
 
 ## 6. Open questions carried into Phase 1+
 
-1. **DME.** Every RDR benchmark above includes referable macular oedema in the
-   positive class. Our Modules 2–3 grade DR only. Either (a) add DME risk
-   grading — IDRiD part B ships a "Risk of macular edema" column we already
-   have — or (b) state explicitly that our sensitivity is for DR-only referral and
-   is therefore *not* directly comparable to Gulshan/IDx-DR. Decide before Phase 3.
+1. ~~**DME.**~~ **✅ RESOLVED 2026-09-11 — option (a).** DME is in the referable
+   class: **referable = ICDR ≥ 2 OR DME risk = 2**. The DME grade is derived
+   geometrically from Module 2's hard-exudate mask, fovea centre and disc diameter,
+   so it costs a function rather than a model. Decision, costs and the three
+   endpoints we now report: [clinical_definitions.md](clinical_definitions.md).
+   **Caveat that survives the decision:** APTOS has no DME labels, so all
+   APTOS-reported numbers are the DR-only endpoint and are not comparable to
+   Gulshan/IDx-DR. Label them.
 2. **Operating point selection.** Gulshan reports two. We should too: a
    high-sensitivity screening point and a high-specificity point, with the
    threshold chosen on a validation split and *frozen* before touching Messidor-2.
@@ -276,5 +291,17 @@ figures would weaken our submission, not strengthen it.
 - Med. Image Anal. (2021), DRIVE evaluation inconsistencies — [ScienceDirect](https://www.sciencedirect.com/science/article/abs/pii/S1361841521003455)
 - SMART India (2022), *Lancet Global Health* — [thelancet.com](https://www.thelancet.com/journals/langlo/article/PIIS2214-109X(22)00411-9/fulltext)
 - Krause et al., Messidor-2 adjudicated grades — [Kaggle](https://www.kaggle.com/datasets/google-brain/messidor2-dr-grades)
+  (ships adjudicated DR severity, **DME**, and gradability — the DME column is what
+  made the §6.1 decision buildable)
+- Dey et al. (2025), AIDRSS multicentric India validation — [arXiv:2501.05826](https://arxiv.org/abs/2501.05826).
+  Useful for field operating statistics (10.9% quality-reject rate, 2 images/patient,
+  13.7% DR prevalence) — see [telemedicine_parameters.md](telemedicine_parameters.md).
+  **Not a benchmark:** it defines "referable" as DR3–DR4 only, a positive class ~30×
+  smaller than ours. Worked example in [clinical_definitions.md](clinical_definitions.md) §3.
+- OJPHI (2024) 16:e50921, South India ophthalmic workforce — [doi:10.2196/50921](https://doi.org/10.2196/50921)
+  *(abstract only — full text not retrievable)*
+- US National Eye Institute, diabetic eye disease materials — source of the "up to
+  95% of severe vision loss preventable" figure now cited in README §1.1
+  [nei.nih.gov](https://www.nei.nih.gov/eye-health-information/eye-conditions-and-diseases/diabetic-retinopathy)
 - APTOS 2019 winning score, as documented in [arXiv:2301.04644](https://arxiv.org/pdf/2301.04644)
 - IDRiD challenge portal — [idrid.grand-challenge.org](https://idrid.grand-challenge.org/)

@@ -18,6 +18,7 @@ function cfg = setup_drishti()
     addpath(genpath(fullfile(projectRoot, 'src')));
     addpath(fullfile(projectRoot, 'config'));
     addpath(fullfile(projectRoot, 'tests'));
+    addpath(fullfile(projectRoot, 'simulink'));
 
     % --- Paths -----------------------------------------------------------
     cfg = drishti_paths();
