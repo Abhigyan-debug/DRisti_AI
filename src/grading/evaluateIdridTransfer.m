@@ -46,7 +46,12 @@ function R = evaluateIdridTransfer(opts)
     thrSens = V.R.thresholds.highSensitivity;
 
     % ---- labels ----------------------------------------------------------
-    [names, dr, dme] = loadIdridGrades(cfg, opts.split);
+    % srcDir is returned PER ROW. IDRiD reuses filenames across splits -
+    % IDRiD_001.jpg exists in BOTH the training and testing folders as
+    % different images - so a name alone does not identify an image. Searching
+    % the training folder first silently scored train images against test
+    % labels for all 103 test rows.
+    [names, dr, dme, srcDir] = loadIdridGrades(cfg, opts.split);
     n = numel(names);
 
     % IDRiD encodes referable DME as 2 (Messidor-2 uses 1) - resolve through
@@ -55,15 +60,14 @@ function R = evaluateIdridTransfer(opts)
     dmeVal = sscanf(D.dme_encoding.per_dataset.idrid.dme_referable, 'value == %d');
 
     % ---- inference -------------------------------------------------------
-    imgDirs = {cfg.idrid.gradeTrainImages, cfg.idrid.gradeTestImages};
     scores = nan(n,1);
     t0 = tic;
     for i = 1:8:n
         j = min(i+7, n);
         X = []; keep = [];
         for k = i:j
-            p = findImage(imgDirs, names(k));
-            if p == "", continue; end
+            p = string(fullfile(srcDir(k), char(names(k) + ".jpg")));
+            if ~isfile(p), continue; end
             img = imread(p);
             X = cat(4, X, im2single(prepFundusIdrid(img, inputSize3(1))));
             keep(end+1) = k; %#ok<AGROW>
@@ -118,15 +122,17 @@ end
 
 % ------------------------------------------------------------------ helpers
 
-function [names, dr, dme] = loadIdridGrades(cfg, split)
-    files = {};
+function [names, dr, dme, srcDir] = loadIdridGrades(cfg, split)
+    files = {}; dirs = {};
     if any(strcmp(split, {'train','both'}))
         files{end+1} = fullfile(cfg.idrid.gradeLabels, 'a. IDRiD_Disease Grading_Training Labels.csv');
+        dirs{end+1}  = cfg.idrid.gradeTrainImages;
     end
     if any(strcmp(split, {'test','both'}))
         files{end+1} = fullfile(cfg.idrid.gradeLabels, 'b. IDRiD_Disease Grading_Testing Labels.csv');
+        dirs{end+1}  = cfg.idrid.gradeTestImages;
     end
-    names = strings(0,1); dr = []; dme = [];
+    names = strings(0,1); dr = []; dme = []; srcDir = strings(0,1);
     for f = 1:numel(files)
         T = readtable(files{f}, 'VariableNamingRule', 'preserve');
         nm = string(T{:,1});
@@ -135,20 +141,13 @@ function [names, dr, dme] = loadIdridGrades(cfg, split)
         if ~isnumeric(g), g = str2double(string(g)); end
         if ~isnumeric(d), d = str2double(string(d)); end
         keep = nm ~= "" & ~ismissing(nm) & ~isnan(g);
-        names = [names; nm(keep)];  %#ok<AGROW>
-        dr    = [dr; double(g(keep))];   %#ok<AGROW>
-        dme   = [dme; double(d(keep))];  %#ok<AGROW>
+        names  = [names; nm(keep)];                              %#ok<AGROW>
+        dr     = [dr; double(g(keep))];                          %#ok<AGROW>
+        dme    = [dme; double(d(keep))];                         %#ok<AGROW>
+        srcDir = [srcDir; repmat(string(dirs{f}), nnz(keep), 1)]; %#ok<AGROW>
     end
 end
 
-
-function p = findImage(dirs, name)
-    p = "";
-    for d = 1:numel(dirs)
-        cand = fullfile(dirs{d}, char(name + ".jpg"));
-        if isfile(cand), p = string(cand); return; end
-    end
-end
 
 
 function img = prepFundusIdrid(img, sz)

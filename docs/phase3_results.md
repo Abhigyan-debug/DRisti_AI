@@ -190,6 +190,71 @@ optimally placed the specificity would be far below the 95.9% seen internally.
 
 ---
 
+## 3b. Per-site calibration — the fix, measured
+
+The Messidor-2 failure was a *score-scale* problem, not a *signal* problem: AUC held
+at 0.885 while sensitivity collapsed to 31.2%. The model ranks correctly on unseen
+cameras; only the cut point is wrong. **A threshold is a property of an imaging
+domain, not of a model.**
+
+So the operating point is fitted per site, from a small labelled sample drawn from
+the target camera, under one absolute rule:
+
+> **The calibration set and the evaluation set must be disjoint.**
+> Fit, freeze, then evaluate on images the fit never saw. Otherwise the result is
+> indistinguishable from tuning on test.
+
+### Measured on Messidor-2 (post-hoc demonstration, disjoint halves)
+
+| Calibration images | Sensitivity | Specificity |
+|---|---|---|
+| **0 — APTOS threshold, current system** | **31.2%** | 99.5% |
+| 25 | 85.9% ± 12.7 | 61.0% |
+| 50 | 87.3% ± 7.5 | 61.5% |
+| 100 | 87.3% ± 8.4 | 60.9% |
+| **200** | **90.0% ± 4.9** | 57.9% |
+| 400 | 89.8% ± 3.3 | 60.8% |
+
+*30 random disjoint splits per row. This is a demonstration of the deployment
+procedure on a set that has already been read — **not** a new external-validation
+claim. The 31.2% figure remains the honest headline external result.*
+
+### Measured on IDRiD (train → test, disjoint by construction)
+
+| | Sensitivity | Specificity |
+|---|---|---|
+| APTOS threshold | 75.0% | 97.4% |
+| Site-calibrated (100 imgs) | 83.7% ± 1.4 | 78.7% |
+
+### What this establishes
+
+1. **It recovers the failure.** Sensitivity 31.2% → 90.0% on Messidor-2, hitting the
+   clinical target on the dataset where the system had been failing outright.
+2. **The cost is specificity**: 99.5% → ~58%. For screening that is the correct
+   direction — a false positive costs a review, a false negative costs sight — but it
+   must be stated, not hidden. It also raises referral volume, which feeds directly
+   into Module 5's throughput model.
+3. **~200 labelled images per site** is the operational number. Below that the
+   threshold is a noisy estimate (±12.7 at 25 images, ±4.9 at 200). More data buys
+   *reliability*, not higher mean performance — the mean is flat from 50 onward.
+4. **The benefit scales with how badly transfer fails.** On IDRiD, where the APTOS
+   threshold already gave 75% sensitivity, calibration adds ~9pp. On Messidor-2,
+   where it gave 31%, it adds ~59pp.
+
+### The deployment claim this supports
+
+> "We do not claim one threshold generalises to every camera — we measured that it
+> does not, losing 59 points of sensitivity on unseen equipment. Deployment includes
+> a per-site calibration step: roughly 200 labelled images from each new camera,
+> used to fit the operating point, frozen before clinical use, and never reused for
+> evaluation. That recovers 90% sensitivity on the benchmark where the uncalibrated
+> system reached 31%."
+
+That is a stronger and more honest deployment story than a single global number, and
+it matches how clinical AI is actually rolled out.
+
+---
+
 ## 4. What is NOT done
 - **The hybrid lesion-feature model.** Only the single-technique baseline exists,
   so the README's "integrated beats single-technique" claim is **not yet
