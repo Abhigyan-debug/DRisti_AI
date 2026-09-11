@@ -15,12 +15,12 @@ first thing a teammate (or their AI agent) reads to understand where things stan
 | 1 — Image quality & enhancement | ⬜ Not started — *thresholds already measured* | Abhigyan (R1) |
 | 2 — Segmentation | ⬜ Not started | Abhigyan (R1) |
 | 3 — DR severity grading | ⬜ Not started — *blocked on a decision, see B3* | Abhigyan (R1) |
-| 4 — Explainability & reporting | ⬜ Not started — *layout prototyping can start now* | Natik (R4) |
-| **5 — Simulink throughput** | ⬜ **Not started — starts today, no dependencies** | **Natik (R4)** — *reassigned 2026-09-11* |
+| 4 — Explainability & reporting | 🟡 **Architecture & Layout Prototype Complete** | Natik (R4) |
+| **5 — Simulink throughput** | ✅ **Complete — discrete-event model & sizing verified** | **Natik (R4)** — *reassigned 2026-09-11* |
 | 6 — Integration & benchmarking | ⬜ Not started — *blocked on B1* | Abhigyan (R2) |
 | 7 — Demo & pitch | ⬜ Not started — *deck skeleton can start now* | Oshi (R5) |
 
-**No pipeline code exists yet.** `src/` is empty scaffolding with `.gitkeep` files.
+**Module 5 simulation and Module 4 report architecture are implemented.**
 
 ---
 
