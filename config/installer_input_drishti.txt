@@ -1,0 +1,97 @@
+########################################################################
+##
+## DRishti-AI - MATLAB silent (non-interactive) installation input
+##
+## Use this ONLY if your campus licence gives you a File Installation Key
+## (FIK). If you are installing through the normal signed-in installer,
+## ignore this file - just tick the products listed at the bottom.
+##
+## HOW TO USE
+##   1. Get a File Installation Key:
+##        mathworks.com > My Account > your campus licence >
+##        "Install and Activate" > "Activate to Retrieve License File"
+##      (If your licence shows no FIK, your admin has disabled it. Use the
+##       interactive installer instead.)
+##   2. Download and unzip the R2026a installer into D:\MATLAB\_installer
+##   3. Copy this file next to setup.exe, fill in fileInstallationKey below
+##   4. Run from an ADMIN PowerShell:
+##
+##        D:\MATLAB\_installer\setup.exe -inputFile D:\MATLAB\_installer\installer_input_drishti.txt
+##
+##   5. Then verify:  matlab -batch "cd('C:\Users\Lenovo\Desktop\DRishti_AI'); setup_drishti"
+##
+## NOTE ON PRODUCT NAMES: the product.* keys below must match the names in
+## the installer_input.txt template that ships with YOUR installer exactly.
+## Release to release, names do change (e.g. "Neural Network Toolbox"
+## became "Deep Learning Toolbox"). Diff this against the shipped template
+## before running, and delete any line the template does not contain -
+## an unrecognised product key aborts the install.
+##
+########################################################################
+
+
+## REQUIRED -----------------------------------------------------------
+
+## Your File Installation Key. Not the same as an activation key.
+fileInstallationKey=
+
+## Accept the MathWorks Software Licence Agreement. Must be "yes".
+## Read it at: mathworks.com/legal/software-license-agreement.html
+agreeToLicense=yes
+
+## Install location. D: chosen deliberately - C: had under 19 GB free and
+## Deep Learning Toolbox pulls down pretrained networks separately.
+destinationFolder=D:\MATLAB\R2026a
+
+## Installer log. Check this first if the install fails silently.
+outputFile=D:\MATLAB\_installer\install_log.txt
+
+
+## OPTIONAL ------------------------------------------------------------
+
+## Uncomment to skip the desktop shortcut.
+# createAccessibilityShortcut=false
+
+## Uncomment to enable Windows Firewall exceptions for licence managers.
+# enableLNU=false
+
+
+## PRODUCTS ------------------------------------------------------------
+##
+## If you comment out ALL product lines, the installer installs every
+## product your licence covers. On a campus licence that is 100+ products
+## and well over 40 GB - so the explicit list below is deliberate.
+##
+## Mapping to the project modules (see README section 3):
+
+## Core
+product.MATLAB
+
+## Module 1 - quality assessment & enhancement (Phase 1)
+product.Image_Processing_Toolbox
+
+## Module 2 - segmentation (Phase 2)
+product.Computer_Vision_Toolbox
+product.Deep_Learning_Toolbox
+product.Medical_Imaging_Toolbox
+
+## Module 3 - grading + calibration (Phase 3)
+product.Statistics_and_Machine_Learning_Toolbox
+
+## Phase 3 - GPU training. Required to use the RTX 5050 at all.
+product.Parallel_Computing_Toolbox
+
+## Module 5 - throughput simulation (Phase 5)
+product.Simulink
+product.SimEvents
+
+## Module 4 - the one-page PDF report (Phase 4)
+product.MATLAB_Report_Generator
+
+## Useful, optional - uncomment if you want them:
+## Interactive image labelling for building lesion ground truth
+# product.Image_Acquisition_Toolbox
+## Signal processing, occasionally handy for filter design in Module 1
+# product.Signal_Processing_Toolbox
+## If you plan to deploy the pipeline as a standalone app for the demo
+# product.MATLAB_Compiler

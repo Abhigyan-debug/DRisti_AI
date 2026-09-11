@@ -1,0 +1,36 @@
+{
+  "_comment": "Module 1 quality thresholds derived from measured distributions across APTOS/IDRiD/DRIVE/Messidor-2. Percentiles are over the pooled sample. Treat these as STARTING POINTS calibrated on curated datasets - field images from handheld cameras will be worse, so re-check on degraded images before trusting the reject rate (README section 9).",
+  "_generated_utc": "2026-09-11T11:03:02+00:00",
+  "_sample_size": 380,
+  "canonical_fov_px": 512,
+  "sharpness": {
+    "metric": "variance of 4-neighbour Laplacian, measured AFTER rescaling so the FOV diameter is 512px",
+    "reject_below": 9.5,
+    "borderline_below": 16.28
+  },
+  "illumination_uniformity": {
+    "metric": "coefficient of variation of 8x8 block means inside FOV",
+    "reject_above": 0.3412,
+    "borderline_above": 0.2437
+  },
+  "fov_coverage": {
+    "metric": "fraction of frame inside the field of view",
+    "_WARNING": "DO NOT USE THIS AS AN ABSOLUTE THRESHOLD. FOV coverage is a camera/crop fingerprint, not a quality signal: IDRiD sits at 0.691 with near-zero variance, Messidor-2 at ~0.465, APTOS is trimodal. A cut-off calibrated on the pooled distribution lands inside Messidor-2's own range and would reject gradable images from our external benchmark for camera geometry alone. Module 1 must judge framing relative to the DETECTED FOV (is the disc complete, is the macula centred) rather than as a fraction of frame.",
+    "pooled_p02_do_not_use": 0.4485,
+    "per_corpus_median": {
+      "APTOS": 0.7909,
+      "IDRiD": 0.6912,
+      "DRIVE": 0.6872,
+      "Messidor2": 0.4653
+    }
+  },
+  "glare": {
+    "metric": "fraction of FOV pixels with any channel >= 250",
+    "reject_above": 0.29142,
+    "borderline_above": 0.03834
+  },
+  "contrast": {
+    "metric": "p99 - p1 of luminance inside FOV",
+    "reject_below": 46.58
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "generated_utc": "2026-09-11T10:04:44+00:00",
+  "data_root": "D:\\DRishti_AI_data",
+  "datasets": {
+    "aptos2019": {
+      "present": true,
+      "path": "D:\\DRishti_AI_data\\aptos2019",
+      "n_files": 5593,
+      "size_bytes": 10216919325,
+      "size_human": "9.5GB",
+      "by_extension": {
+        ".png": 5590,
+        ".csv": 3
+      },
+      "by_directory": {
+        ".": 3,
+        "test_images": 1928,
+        "train_images": 3662
+      }
+    },
+    "idrid": {
+      "present": true,
+      "path": "D:\\DRishti_AI_data\\idrid",
+      "n_files": 1488,
+      "size_bytes": 1008841854,
+      "size_human": "962.1MB",
+      "by_extension": {
+        ".jpg": 1113,
+        ".tif": 363,
+        ".txt": 6,
+        ".csv": 6
+      },
+      "by_directory": {
+        "grading": 2,
+        "grading/1. Original Images/a. Training Set": 413,
+        "grading/1. Original Images/b. Testing Set": 103,
+        "grading/2. Groundtruths": 2,
+        "localization": 2,
+        "localization/1. Original Images/a. Training Set": 413,
+        "localization/1. Original Images/b. Testing Set": 103,
+        "localization/2. Groundtruths/1. Optic Disc Center Location": 2,
+        "localization/2. Groundtruths/2. Fovea Center Location": 2,
+        "segmentation": 2,
+        "segmentation/1. Original Images/a. Training Set": 54,
+        "segmentation/1. Original Images/b. Testing Set": 27,
+        "segmentation/2. All Segmentation Groundtruths/a. Training Set/1. Microaneurysms": 54,
+        "segmentation/2. All Segmentation Groundtruths/a. Training Set/2. Haemorrhages": 53,
+        "segmentation/2. All Segmentation Groundtruths/a. Training Set/3. Hard Exudates": 54,
+        "segmentation/2. All Segmentation Groundtruths/a. Training Set/4. Soft Exudates": 26,
+        "segmentation/2. All Segmentation Groundtruths/a. Training Set/5. Optic Disc": 54,
+        "segmentation/2. All Segmentation Groundtruths/b. Testing Set/1. Microaneurysms": 27,
+        "segmentation/2. All Segmentation Groundtruths/b. Testing Set/2. Haemorrhages": 27,
+        "segmentation/2. All Segmentation Groundtruths/b. Testing Set/3. Hard Exudates": 27,
+        "segmentation/2. All Segmentation Groundtruths/b. Testing Set/4. Soft Exudates": 14,
+        "segmentation/2. All Segmentation Groundtruths/b. Testing Set/5. Optic Disc": 27
+      }
+    },
+    "drive": {
+      "present": true,
+      "path": "D:\\DRishti_AI_data\\drive",
+      "n_files": 100,
+      "size_bytes": 29978685,
+      "size_human": "28.6MB",
+      "by_extension": {
+        ".gif": 60,
+        ".tif": 40
+      },
+      "by_directory": {
+        "test/images": 20,
+        "test/mask": 20,
+        "training/1st_manual": 20,
+        "training/images": 20,
+        "training/mask": 20
+      }
+    },
+    "messidor2": {
+      "present": true,
+      "path": "D:\\DRishti_AI_data\\messidor2",
+      "n_files": 1749,
+      "size_bytes": 2467079683,
+      "size_human": "2.3GB",
+      "by_extension": {
+        ".png": 1058,
+        ".jpg": 690,
+        ".csv": 1
+      },
+      "by_directory": {
+        ".": 1,
+        "IMAGES": 1748
+      }
+    }
+  },
+  "expectation_check": [
+    "all expected counts matched"
+  ],
+  "known_gaps": [
+    "drive/test has no 1st_manual/ - vessel ground truth for the DRIVE test split is withheld in this distribution. Phase 2 must re-split the 20 annotated training images, or obtain the official test annotations.",
+    "messidor2 ships images + left/right pairing only, with NO ICDR grade labels. Phase 6 external validation needs the separately-published Messidor-2 reference grades before it can report sensitivity/specificity."
+  ]
+}

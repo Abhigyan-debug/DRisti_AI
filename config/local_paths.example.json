@@ -1,0 +1,4 @@
+{
+  "_comment": "Copy this file to config/local_paths.json and set dataRoot for YOUR machine. local_paths.json is git-ignored, so each teammate keeps their own. Alternatively set the DRISHTI_DATA_ROOT environment variable, which takes priority over this file.",
+  "dataRoot": "D:/DRishti_AI_data"
+}

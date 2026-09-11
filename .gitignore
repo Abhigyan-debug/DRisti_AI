@@ -1,0 +1,61 @@
+# ---- Data (never committed; lives outside the repo, see config/paths.m) ----
+data/
+*.zip
+*.zip.[0-9][0-9][0-9]
+*.tar
+*.tar.gz
+
+# ---- Trained weights / checkpoints ----
+models/**
+!models/.gitkeep
+!models/README.md
+*.mat
+*.onnx
+*.h5
+*.pt
+*.pth
+*.ckpt
+
+# ---- Generated outputs ----
+results/**
+!results/.gitkeep
+reports/**
+!reports/.gitkeep
+!reports/samples/
+*.pdf
+!docs/**/*.pdf
+!Research Paper.pdf
+
+# ---- MATLAB ----
+*.asv
+*.m~
+*.mex*
+*.slxc
+slprj/
+sccprj/
+codegen/
+*.autosave
+octave-workspace
+MATLABWindowsSetup*/
+
+# ---- Simulink autosave / cache ----
+*.slx.r20*
+*.slx.autosave
+*.mdl.autosave
+
+# ---- Python tooling ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# ---- OS / editor ----
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# ---- Local machine config (data paths differ per teammate) ----
+config/local_paths.json
