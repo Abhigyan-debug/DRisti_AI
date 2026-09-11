@@ -49,7 +49,14 @@ function info = trainBaselineGrader(opts)
     rng(opts.seed);
 
     % ---- data ------------------------------------------------------------
+    % Build (or reuse) the pre-resized cache. Without it training is I/O bound
+    % at ~0.45 s/image and a 12-epoch run takes 4.4 hours doing identical
+    % preprocessing 12 times over.
+    cacheDir = buildAptosCache('size', opts.inputSize);
+
     [trainT, valT] = loadAptosSplit('subsetFraction', opts.subsetFraction, 'seed', opts.seed);
+    trainT.imagePath = redirectToCache(trainT.imageName, cacheDir);
+    valT.imagePath   = redirectToCache(valT.imageName,   cacheDir);
     fprintf('  train %d | val %d images\n', height(trainT), height(valT));
 
     inputSize3 = [opts.inputSize opts.inputSize 3];
@@ -180,29 +187,26 @@ end
 
 
 function img = prepFundus(img, inputSize3)
-%PREPFUNDUS  Crop to the field of view, then resize.
+%PREPFUNDUS  Normalise a cached image to the network input.
 %
-%   Cropping to the FOV before resizing is the single highest-value
-%   preprocessing step for APTOS: its images carry wildly different amounts of
-%   black surround (FOV coverage measured at 0.474 / 0.791 / 0.906 - trimodal).
-%   Resizing without cropping means the retina occupies a different fraction of
-%   the tensor per image, so the network sees a different effective zoom per
-%   camera and has to learn around it.
+%   The FOV crop and the expensive resize already happened once in
+%   BUILDAPTOSCACHE, so this stays cheap - it is on the per-epoch path.
 
     if size(img, 3) == 1
         img = repmat(img, 1, 1, 3);
     end
     img = im2double(img);
-
-    gray = 0.299*img(:,:,1) + 0.587*img(:,:,2) + 0.114*img(:,:,3);
-    lit = gray > 0.05;
-    rows = find(any(lit, 2));
-    cols = find(any(lit, 1));
-    if numel(rows) > 10 && numel(cols) > 10
-        img = img(rows(1):rows(end), cols(1):cols(end), :);
+    if ~isequal(size(img, 1:2), inputSize3(1:2))
+        img = imresize(img, inputSize3(1:2));
     end
+end
 
-    img = imresize(img, inputSize3(1:2));
+
+function paths = redirectToCache(names, cacheDir)
+    paths = strings(numel(names), 1);
+    for k = 1:numel(names)
+        paths(k) = string(fullfile(cacheDir, char(names(k) + ".png")));
+    end
 end
 
 
