@@ -165,12 +165,28 @@ end
 function [T, agreement] = buildEvidence(cam, F)
 %BUILDEVIDENCE  How much CAM attention lands on each independently-found lesion.
 
-    % Microaneurysms are DELIBERATELY ABSENT. Measured precision is 0.022, so
-    % reporting a count would put a false clinical finding in front of a
-    % clinician - worse than reporting nothing, because it looks authoritative.
-    % Re-add it when a trained false-positive classifier exists.
-    names = {'hardExudates', 'softExudates', 'haemorrhages'};
-    labels = {'Hard exudates', 'Soft exudates', 'Haemorrhages'};
+    % ONLY VALIDATED CHANNELS APPEAR HERE. Measured per-lesion precision
+    % against IDRiD ground truth, n=12:
+    %
+    %     hard exudates    0.595  <- displayed
+    %     haemorrhages     0.034  <- suppressed
+    %     microaneurysms   0.021  <- suppressed
+    %     soft exudates    never measured  <- suppressed
+    %
+    % A count shown to a clinician at 2-3% precision is a fabricated finding
+    % presented authoritatively, which is worse than showing nothing. Soft
+    % exudates are suppressed for a different reason - they have not been
+    % validated at all, and "do not display what you have not measured" is only
+    % a rule if it applies uniformly.
+    %
+    % Hard exudates earn their place by UNDER-detecting: 0.4x count ratio,
+    % recall 0.254. It misses real lesions rather than inventing them, which is
+    % the correct direction of error for a clinical display. It is also the
+    % channel that drives the DME endpoint.
+    %
+    % Re-add a channel here only after measuring it - see evaluateSegmentation.
+    names = {'hardExudates'};
+    labels = {'Hard exudates'};
 
     lesion = strings(0,1); count = []; camMass = []; camDensity = [];
     totalCam = sum(cam(:));

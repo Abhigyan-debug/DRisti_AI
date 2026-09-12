@@ -388,8 +388,53 @@ classifier over these candidates, not better morphology.
   false-positive classifier, and because Phase 3 measured that lesion features add
   nothing to the CNN's accuracy anyway (§3d).
 
-The haemorrhage channel shares this pipeline and has **not** been separately
-measured. Treat it with the same suspicion until it has been.
+### Every channel, one standard
+
+The haemorrhage channel shared MA's pipeline and was still being displayed while
+MA had been pulled — measured and unmeasured channels held to different bars.
+Closed by applying per-lesion recall/precision uniformly (IDRiD, n=12):
+
+| Channel | Recall | Precision | Count ratio | Displayed? |
+|---|---|---|---|---|
+| Microaneurysms | 0.089 | 0.021 | 3.6× | ❌ |
+| Haemorrhages | 0.040 | **0.034** | **1.9×** | ❌ |
+| **Hard exudates** | 0.254 | **0.595** | **0.4×** | ✅ |
+| Soft exudates | — | never measured | — | ❌ |
+
+**Haemorrhage is worse than microaneurysm** — it finds 4% of real haemorrhages,
+and 97% of what it reports is false. Its 1.9× count ratio is the trap in its
+purest form: "Haemorrhages n=20" reads as entirely believable.
+
+**Hard exudates is the only channel fit to display**, and for the right reason:
+it **under**-detects (0.4× ratio, recall 0.254) while ~60% of what it reports is
+real. Missing real lesions is the correct direction of error for a clinical
+display; inventing them is not. It is also the channel that drives the DME
+endpoint, so the clinically load-bearing detector is the one that works.
+
+Soft exudates are suppressed on a different ground — never measured. *Unmeasured*
+is not the same as *unreliable*, but it is equally unfit to display, and the rule
+only means something if it applies uniformly.
+
+### The architectural lesson
+
+Candidate generation is not detection. The current design treats a candidate as a
+confirmed lesion:
+
+    fundus → candidate generation → "microaneurysm"
+
+The two-stage design separates them, which is what the IDRiD winners did:
+
+    fundus → candidate generation → CNN false-positive classifier → validated lesion
+
+Our candidates are the right input to that classifier; the error was reporting
+them as diagnoses. **Roadmap item: microaneurysm and haemorrhage detection remain
+candidate-generation stages and require a trained false-positive classifier
+before clinical reporting.**
+
+One more distinction worth carrying into the design: **prediction confidence is
+not lesion-detection confidence.** The grader can be 98% sure an image is
+referable while every lesion count on the same report is unreliable. They are
+separate quantities and the report must not blur them.
 
 ---
 

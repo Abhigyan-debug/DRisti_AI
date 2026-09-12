@@ -62,19 +62,24 @@ function R = evaluateSegmentation(target, opts)
             fprintf('    NOTE: training split, NOT the official protocol (B2).\n');
         end
         if isfield(R,'darkLesions')
-            d = R.darkLesions;
-            fprintf('  Microaneurysms (IDRiD train, n=%d)\n', d.n);
-            fprintf('    detected %.0f vs %.0f true (ratio %.1fx)  |  Dice %.4f\n', ...
-                d.meanDetected, d.meanTrue, d.countRatio, d.diceMean);
-            fprintf('    per-lesion recall %.3f  precision %.3f\n', d.recallMean, d.precisionMean);
-            fprintf('    benchmark (IDRiD winner AUPR): 0.5017 - MA detection is genuinely hard\n');
+            for ch = {'microaneurysms','haemorrhages'}
+                if ~isfield(R.darkLesions, ch{1}), continue; end
+                e = R.darkLesions.(ch{1});
+                if e.fitToDisplay, verdict = 'fit to display'; else, verdict = 'NOT fit to display'; end
+                fprintf('  %s (IDRiD train, n=%d)\n', ch{1}, e.n);
+                fprintf('    recall %.3f  precision %.3f  |  detected %.0f vs %.0f true (%.1fx)\n', ...
+                    e.recallMean, e.precisionMean, e.meanDetected, e.meanTrue, e.countRatio);
+                fprintf('    -> %s\n', verdict);
+            end
         end
         if isfield(R,'exudates')
             e = R.exudates;
-            fprintf('  Hard exudates (IDRiD train, n=%d)\n', e.n);
-            fprintf('    Dice %.4f  [%.4f - %.4f]   AUPR %.4f\n', ...
-                e.diceMean, e.diceCI(1), e.diceCI(2), e.auprMean);
-            fprintf('    benchmark (IDRiD winner, AUPR on test): 0.885\n');
+            fprintf('  hard exudates (IDRiD train, n=%d)\n', e.n);
+            fprintf('    recall %.3f  precision %.3f  |  detected %.0f vs %.0f true (%.1fx)\n', ...
+                e.recallMean, e.precisionMean, e.meanDetected, e.meanTrue, e.countRatio);
+            fprintf('    Dice %.4f  [%.4f - %.4f]\n', e.diceMean, e.diceCI(1), e.diceCI(2));
+            if e.fitToDisplay, vv='fit to display'; else, vv='NOT fit to display'; end
+            fprintf('    -> %s\n', vv);
         end
     end
 end
@@ -133,6 +138,7 @@ function E = evalExudates(opts)
     n = min(numel(L), opts.limit);
 
     dice = nan(n,1); aupr = nan(n,1);
+    recL = nan(n,1); precL = nan(n,1); nTrue = nan(n,1); nDet = nan(n,1);
     for k = 1:n
         base = erase(L(k).name, '_EX.tif');
         ip = fullfile(cfg.idrid.segTrainImages, [base '.jpg']);
@@ -159,6 +165,22 @@ function E = evalExudates(opts)
         prec = tp / max(nnz(pred), 1);
         rec  = tp / max(nnz(g), 1);
         aupr(k) = prec * rec;
+
+        % Per-LESION recall/precision, the same standard applied to the dark
+        % lesions. Pixelwise Dice and per-lesion precision answer different
+        % questions, and "is this count fit to show a clinician" is the second.
+        ccG = bwconncomp(g, 8); ccP = bwconncomp(pred, 8);
+        nTrue(k) = ccG.NumObjects; nDet(k) = ccP.NumObjects;
+        hg = 0;
+        for c = 1:ccG.NumObjects
+            if any(pred(ccG.PixelIdxList{c})), hg = hg + 1; end
+        end
+        hp = 0;
+        for c = 1:ccP.NumObjects
+            if any(g(ccP.PixelIdxList{c})), hp = hp + 1; end
+        end
+        recL(k)  = hg / max(ccG.NumObjects, 1);
+        precL(k) = hp / max(ccP.NumObjects, 1);
     end
 
     E.n = nnz(~isnan(dice));
@@ -166,6 +188,12 @@ function E = evalExudates(opts)
     E.diceMean = mean(dice, 'omitnan');
     E.diceCI = ciMean(dice);
     E.auprMean = mean(aupr, 'omitnan');
+    E.recallMean = mean(recL, 'omitnan');
+    E.precisionMean = mean(precL, 'omitnan');
+    E.meanDetected = mean(nDet, 'omitnan');
+    E.meanTrue = mean(nTrue, 'omitnan');
+    E.countRatio = E.meanDetected / max(E.meanTrue, 1);
+    E.fitToDisplay = E.precisionMean >= 0.5;
     E.protocol = 'FOV-masked, single operating point (not a swept AUPR)';
 end
 
@@ -173,68 +201,79 @@ end
 % -------------------------------------------------------------- dark lesions
 
 function D = evalDarkLesions(opts)
-%EVALDARKLESIONS  Microaneurysm detection against IDRiD MA masks.
+%EVALDARKLESIONS  Microaneurysms AND haemorrhages against IDRiD masks.
 %
-%   Reports COUNT RATIO alongside Dice, because the count is what reaches the
-%   clinician in the evidence table. A detector can have a respectable Dice and
-%   still report 348 microaneurysms where a grader would count 30, and the
-%   count is the number a judge reads.
+%   Both channels come out of the same candidate generator and are separated
+%   only by a size/shape rule, so validating one and displaying the other was
+%   never defensible. MA was measured (recall 0.110, precision 0.022) and
+%   pulled from the clinical report while haemorrhage stayed on it unmeasured.
+%   This closes that gap.
 %
-%   Per-lesion recall/precision are computed by connected component overlap,
-%   not pixelwise: an MA is a few pixels across, so a one-pixel centroid offset
-%   destroys pixelwise Dice while being clinically irrelevant.
+%   Reports COUNT RATIO alongside per-lesion recall/precision, because the
+%   count is what reaches the clinician. Per-lesion scoring is by connected
+%   component overlap, not pixelwise: these objects are a few pixels across, so
+%   a one-pixel offset destroys pixelwise Dice while being clinically
+%   irrelevant.
 
     cfg = drishti_paths();
-    maDir = fullfile(cfg.idrid.segTrainMasks, '1. Microaneurysms');
-    L = dir(fullfile(maDir, '*.tif'));
-    n = min(numel(L), opts.limit);
+    specs = { 'microaneurysms', '1. Microaneurysms', '_MA.tif', 'maMask'; ...
+              'haemorrhages',   '2. Haemorrhages',   '_HE.tif', 'haemMask' };
 
-    dice = nan(n,1); rec = nan(n,1); prec = nan(n,1);
-    nDet = nan(n,1); nTrue = nan(n,1);
+    D = struct();
+    for si = 1:size(specs,1)
+        maskDir = fullfile(cfg.idrid.segTrainMasks, specs{si,2});
+        L = dir(fullfile(maskDir, ['*' specs{si,3}]));
+        n = min(numel(L), opts.limit);
 
-    for k = 1:n
-        base = erase(L(k).name, '_MA.tif');
-        ip = fullfile(cfg.idrid.segTrainImages, [base '.jpg']);
-        if ~isfile(ip), continue; end
-        img = imread(ip);
-        gt = readBinary(fullfile(maDir, L(k).name));
+        rec = nan(n,1); prec = nan(n,1); nDet = nan(n,1); nTrue = nan(n,1); dice = nan(n,1);
 
-        fov = detectFOV(img);
-        disc = locateOpticDisc(img, 'fov', fov);
-        v = segmentVessels(img, 'fov', fov, 'discRadiusPx', disc.radius);
-        d = detectDarkLesions(img, struct('fov',fov,'disc',disc,'vesselMask',v.mask));
+        for k = 1:n
+            base = erase(L(k).name, specs{si,3});
+            ip = fullfile(cfg.idrid.segTrainImages, [base '.jpg']);
+            if ~isfile(ip), continue; end
+            img = imread(ip);
+            gt = readBinary(fullfile(maskDir, L(k).name));
 
-        pred = d.maMask & fov.mask;
-        g = gt & fov.mask;
+            fov = detectFOV(img);
+            disc = locateOpticDisc(img, 'fov', fov);
+            v = segmentVessels(img, 'fov', fov, 'discRadiusPx', disc.radius);
+            d = detectDarkLesions(img, struct('fov',fov,'disc',disc,'vesselMask',v.mask));
 
-        tp = nnz(pred & g);
-        dice(k) = 2*tp / max(2*tp + nnz(pred & ~g) + nnz(~pred & g), 1);
+            pred = d.(specs{si,4}) & fov.mask;
+            g = gt & fov.mask;
 
-        ccG = bwconncomp(g, 8);
-        ccP = bwconncomp(pred, 8);
-        nTrue(k) = ccG.NumObjects;
-        nDet(k)  = ccP.NumObjects;
+            tp = nnz(pred & g);
+            dice(k) = 2*tp / max(2*tp + nnz(pred & ~g) + nnz(~pred & g), 1);
 
-        hitG = 0;
-        for c = 1:ccG.NumObjects
-            if any(pred(ccG.PixelIdxList{c})), hitG = hitG + 1; end
+            ccG = bwconncomp(g, 8); ccP = bwconncomp(pred, 8);
+            nTrue(k) = ccG.NumObjects; nDet(k) = ccP.NumObjects;
+            hg = 0;
+            for c = 1:ccG.NumObjects
+                if any(pred(ccG.PixelIdxList{c})), hg = hg + 1; end
+            end
+            hp = 0;
+            for c = 1:ccP.NumObjects
+                if any(g(ccP.PixelIdxList{c})), hp = hp + 1; end
+            end
+            rec(k)  = hg / max(ccG.NumObjects, 1);
+            prec(k) = hp / max(ccP.NumObjects, 1);
         end
-        hitP = 0;
-        for c = 1:ccP.NumObjects
-            if any(g(ccP.PixelIdxList{c})), hitP = hitP + 1; end
-        end
-        rec(k)  = hitG / max(ccG.NumObjects, 1);
-        prec(k) = hitP / max(ccP.NumObjects, 1);
+
+        E = struct();
+        E.n = nnz(~isnan(rec));
+        E.diceMean = mean(dice,'omitnan');
+        E.recallMean = mean(rec,'omitnan');
+        E.precisionMean = mean(prec,'omitnan');
+        E.meanDetected = mean(nDet,'omitnan');
+        E.meanTrue = mean(nTrue,'omitnan');
+        E.countRatio = E.meanDetected / max(E.meanTrue, 1);
+        % A channel is only fit to show a clinician if most of what it reports
+        % is real. 0.5 precision is a low bar and deliberately so - below it,
+        % a displayed count misinforms more often than it informs.
+        E.fitToDisplay = E.precisionMean >= 0.5;
+        E.protocol = 'FOV-masked; per-lesion recall/precision by component overlap';
+        D.(specs{si,1}) = E;
     end
-
-    D.n = nnz(~isnan(dice));
-    D.diceMean = mean(dice, 'omitnan');
-    D.recallMean = mean(rec, 'omitnan');
-    D.precisionMean = mean(prec, 'omitnan');
-    D.meanDetected = mean(nDet, 'omitnan');
-    D.meanTrue = mean(nTrue, 'omitnan');
-    D.countRatio = D.meanDetected / max(D.meanTrue, 1);
-    D.protocol = 'FOV-masked; per-lesion recall/precision by component overlap';
 end
 
 
