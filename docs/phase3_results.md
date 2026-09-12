@@ -431,6 +431,44 @@ them as diagnoses. **Roadmap item: microaneurysm and haemorrhage detection remai
 candidate-generation stages and require a trained false-positive classifier
 before clinical reporting.**
 
+### The two-stage detector, built and measured
+
+Rather than leave it as a roadmap item, the false-positive classifier was built:
+candidates labelled against IDRiD's expert masks (519 positive / 19,024 negative
+from 54 images), a small CNN trained on 48px patches, **split by image** so
+patches from one fundus never appear on both sides.
+
+End-to-end on 14 held-out images:
+
+| Configuration | Recall | Precision | Detections |
+|---|---|---|---|
+| Original single-stage | 0.089 | 0.021 | 136 |
+| Stage 1 alone (looser threshold) | 0.221 | 0.029 | 401 |
+| **Stage 1 + classifier** | 0.095 | **0.053** | **109** |
+
+**The architecture is right.** Against the original detector it improves precision
+**2.5×** at equal recall, and the count becomes plausible (109 vs 136 where truth
+is ~38). Loosening the generator and letting the classifier clean up beats
+tightening the generator, which was the whole hypothesis.
+
+**It is still not enough.** Precision 0.053 is ten times below the 0.5 bar for
+clinical display, so microaneurysms stay suppressed. The binding constraint is
+data, not design: 519 positives from 54 images give a patch classifier of AUC
+0.694 — it can barely tell a microaneurysm from a dark speck.
+
+**Two ceilings worth naming.** A false-positive classifier can only *discard*
+candidates, so final recall can never exceed generator recall (0.235 here). And
+generator recall trades against the classifier's workload — a more sensitive
+generator raises the ceiling but hands over more false positives to reject.
+
+What would actually close the gap is more annotated data — e-ophtha MA carries
+roughly 380 annotated images against IDRiD's 54 — or a generator with better
+recall to raise the ceiling. Both are real work, neither is a tweak.
+
+The classifier is saved and wired in as an **optional** stage
+(`opts.candidateClassifier`), off by default, so nothing downstream changed on
+the strength of a result that does not yet clear the display bar.
+
 One more distinction worth carrying into the design: **prediction confidence is
 not lesion-detection confidence.** The grader can be 98% sure an image is
 referable while every lesion count on the same report is unreliable. They are

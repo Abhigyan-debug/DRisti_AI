@@ -56,6 +56,12 @@ function d = detectDarkLesions(img, ctx, opts)
         img (:,:,:) {mustBeNumeric}
         ctx struct
         opts.threshSD (1,1) double = 2.0
+        % Stage-2 false-positive classifier. When supplied, every MA candidate
+        % is scored and low-scoring ones are discarded. This can only REMOVE
+        % candidates - it cannot recover a lesion the generator never proposed,
+        % so recall stays capped by generator recall.
+        opts.candidateClassifier struct = struct()
+        opts.classifierThreshold (1,1) double = 0.5
     end
 
     fov = ctx.fov;
@@ -137,6 +143,21 @@ function d = detectDarkLesions(img, ctx, opts)
         end
     end
 
+    % --- stage 2: false-positive rejection --------------------------------
+    if isfield(opts.candidateClassifier, 'trained') && ~isempty(maCentroids)
+        keep = scoreCandidates(small, maCentroids, opts.candidateClassifier, ...
+                               opts.classifierThreshold, scale);
+        ccMA = bwconncomp(maMask, 8);
+        drop = false(size(maMask));
+        for q = 1:ccMA.NumObjects
+            if q <= numel(keep) && ~keep(q)
+                drop(ccMA.PixelIdxList{q}) = true;
+            end
+        end
+        maMask(drop) = false;
+        maCentroids = maCentroids(keep(1:min(numel(keep), size(maCentroids,1))), :);
+    end
+
     % --- measure ----------------------------------------------------------
     areaScale = discDiamWork^2;
     d.maMask = imresize(maMask, [size(img,1) size(img,2)], 'nearest');
@@ -163,6 +184,42 @@ function d = detectDarkLesions(img, ctx, opts)
         d.haemLargestAreaDD2 = 0;
     end
     d.haemByType = struct('dot', nDot, 'blot', nBlot, 'flame', nFlame);
+end
+
+
+function keep = scoreCandidates(small, centroids, C, thr, scale)
+%SCORECANDIDATES  Run the stage-2 classifier over candidate patches.
+%
+%   Patches are cut at the SAME size the classifier was trained on, from the
+%   working-scale image. A size mismatch here silently degrades the classifier
+%   without erroring, which is why the size comes from the saved metadata
+%   rather than being hardcoded.
+
+    inSz = C.meta.inputSize;
+    half = floor(inSz(1)/2);
+    n = size(centroids, 1);
+    keep = true(n, 1);
+
+    patches = zeros([inSz(1:2) 3 n], 'single');
+    valid = false(n,1);
+    for q = 1:n
+        ctr = round(centroids(q,:));
+        r1 = ctr(2)-half; r2 = ctr(2)+half-1;
+        c1 = ctr(1)-half; c2 = ctr(1)+half-1;
+        if r1 < 1 || c1 < 1 || r2 > size(small,1) || c2 > size(small,2)
+            continue    % keep edge candidates rather than discard unscored
+        end
+        pch = small(r1:r2, c1:c2, :);
+        if size(pch,3) == 1, pch = repmat(pch,1,1,3); end
+        patches(:,:,:,q) = single(pch);
+        valid(q) = true;
+    end
+
+    if ~any(valid), return; end
+    Y = predict(C.trained, dlarray(patches(:,:,:,valid), 'SSCB'));
+    P = double(gather(extractdata(Y)))';
+    sc = P(:,2);
+    keep(valid) = sc >= thr;
 end
 
 
