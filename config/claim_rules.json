@@ -1,0 +1,250 @@
+{
+  "_comment": [
+    "Claim rules for tools/check_claims.py - the machine-checkable half of the",
+    "honesty rules in CLAUDE.md.",
+    "",
+    "THE ENGINE IN ONE SENTENCE: a banned or superseded number may appear in this",
+    "repository only inside a passage that disowns it. That is deliberately the",
+    "same policy a careful writer already follows, so the checker agrees with the",
+    "prose instead of fighting it - docs/site_calibration.md section 4 mentions the",
+    "banned 90.0% figure many times and passes clean, because every mention is a",
+    "prohibition.",
+    "",
+    "Each rule matches against a BLOCK (a blank-line-separated paragraph or comment",
+    "run, whitespace-normalised), not a line, so claims that wrap across lines are",
+    "still caught. A rule fires when 'pattern' matches, 'context' also matches if",
+    "one is given, and NO 'allowed_when' marker is present in the same block.",
+    "",
+    "Adding a rule is how you retire a number. When a measurement is superseded,",
+    "add the old figure here in the same commit that publishes the new one - then",
+    "the old figure cannot come back without the checker saying so."
+  ],
+  "version": 1,
+  "updated": "2026-09-13",
+  "disavowal_markers": [
+    "post-hoc",
+    "not an independent result",
+    "not independently supported",
+    "do not present",
+    "do not quote",
+    "may NOT be said",
+    "don'?t say",
+    "do not say",
+    "never say",
+    "not a result",
+    "do not restate",
+    "superseded",
+    "\\bbanned\\b",
+    "\\bforbidden\\b",
+    "❌",
+    "⚠",
+    "Things NOT to say",
+    "optimistic half",
+    "would be misleading",
+    "demonstrat",
+    "not the evidence",
+    "on itself",
+    "cannot be re-?read",
+    "spent",
+    "caveat",
+    "not found",
+    "could not be (verified|located)",
+    "unverified",
+    "misattribut",
+    "not verified",
+    "quarantin"
+  ],
+  "supersession_markers": [
+    "superseded",
+    "do not restate",
+    "pre-rebuild",
+    "previously",
+    "used to",
+    "\\bwas\\b",
+    "\\bwere\\b",
+    "\\bold\\b",
+    "\\bbefore\\b",
+    "earlier",
+    "historical",
+    "coexist",
+    "→",
+    "->",
+    "~~",
+    "no longer",
+    "at the time",
+    "\\bthen\\b",
+    "2026-09-12",
+    "defects?",
+    "\\bfixed\\b",
+    "never shipped",
+    "not connected",
+    "different pipelines",
+    "re-?measured",
+    "did not survive",
+    "no-?op",
+    "silently"
+  ],
+  "forbidden": [
+    {
+      "id": "calibration-reaches-90",
+      "pattern": "(restor\\w*|recover\\w*|back\\s+(up\\s+)?to|gets?\\s+us\\s+to|takes?\\s+\\S+\\s+to|returns?\\s+\\S*\\s*to)\\s*(it\\s+to\\s*)?9[01](\\.\\d)?\\s*%",
+      "context": "calibrat|messidor|31(\\.2)?\\s*%|per-site",
+      "reason": "Per-site calibration does NOT reach 90% out of sample. The 90.0%/57.9% pair is a post-hoc demonstration on Messidor-2 itself, on random disjoint halves of a benchmark that is now spent and cannot be re-read to check it.",
+      "instead": "Quote the independently-supported IDRiD result: sensitivity 75.0% -> 82.8%, specificity 97.4% -> 76.9% (fit on IDRiD TRAIN n=413, evaluated on held-back TEST n=103). Say that it narrows the transfer gap and does not close it. See docs/site_calibration.md section 4."
+    },
+    {
+      "id": "messidor-31-to-90-arrow",
+      "pattern": "31(\\.2)?\\s*%?\\s*(→|->|to)\\s*9[01](\\.\\d)?\\s*%",
+      "reason": "The 31.2% -> 90.0% transition is the post-hoc Messidor-2 demonstration, not a measured deployment result.",
+      "instead": "State it only while disowning it, or quote the IDRiD replication instead. See docs/site_calibration.md section 4."
+    },
+    {
+      "id": "sub-30-second-review-achieved",
+      "pattern": "(achiev\\w*|deliver\\w*|measur\\w*|prov\\w*|demonstrat\\w*)\\s+(a\\s+)?(sub-?30|under\\s+30|less\\s+than\\s+30)[\\s-]*second",
+      "reason": "No clinician has ever been timed using this system. 30 s is Module 4's DESIGN TARGET; the only MEASURED figure is a ~38 s floor on READING the report's critical path, which is already above it.",
+      "instead": "'Designed for sub-30-second review; not yet timed with a clinician. The measured reading floor alone is ~38 s.' See CLAUDE.md, Headline results."
+    },
+    {
+      "id": "validated-explainability",
+      "pattern": "(validated|verified|confirmed|proven|clinically[\\s-]review\\w*)\\s+(\\w+\\s+){0,2}(explainab|grad-?cam|saliency|interpretab)",
+      "reason": "Grad-CAM lesion enrichment is 1.51x versus expert masks - above chance, but not strong corroboration. No ophthalmologist has rated a single heatmap; the reviewer has not been recruited.",
+      "instead": "'Grad-CAM enrichment 1.51x against expert masks: above chance, NOT validated explainability. No ophthalmologist has rated it.' Protocol is ready in docs/gradcam_review_protocol.md."
+    },
+    {
+      "id": "research-paper-as-benchmark",
+      "pattern": "(benchmark|baseline|state[\\s-]of[\\s-]the[\\s-]art|compare\\w*\\s+(to|against)|beat\\w*|outperform\\w*)[^.]{0,60}Research\\s+Paper\\.pdf",
+      "reason": "Research Paper.pdf is a team-supplied IJCSE paper reporting 94.3% accuracy with no sensitivity, no specificity and no external validation. It is background reading, never a benchmark.",
+      "instead": "Use the sourced targets in docs/literature_benchmarks.md (Gulshan, IDx-DR, the IDRiD AUPR ceilings). Reasons in section 5 of that file."
+    },
+    {
+      "id": "pipeline-outperforms-baselines",
+      "pattern": "(our\\s+)?(integrated\\s+)?pipeline\\s+(outperform|beats|exceeds|improves\\s+on)\\w*\\s+(the\\s+)?baselin",
+      "reason": "This was tested and it is false. The quality gate does not improve grading accuracy - it measured -9.2pp specificity. Its value is clinical, not metric.",
+      "instead": "'The quality gate does not improve accuracy. Its value is that an ungradable image gets a retake instead of a confident grade.'"
+    },
+    {
+      "id": "aptos-compared-to-idx-or-gulshan",
+      "pattern": "90\\.3\\s*%[^.]{0,80}(idx-?dr|gulshan)|((idx-?dr|gulshan)[^.]{0,80}90\\.3\\s*%)",
+      "reason": "APTOS has no DME labels, so 90.3% is the DR-only endpoint. IDx-DR and Gulshan report mtmDR, which includes referable DME. The comparison is not like-for-like.",
+      "instead": "Compare on Messidor-2 where the endpoint matches, and label every APTOS number as the DR-only endpoint. See CLAUDE.md, Targets."
+    },
+    {
+      "id": "unverified-telemedicine-citations",
+      "pattern": "(Rani\\s+et\\s+al\\.?,?\\s*Eye\\s*2021|Prathiba\\s+et\\s+al\\.?,?\\s*Community\\s+Eye\\s+Health|Raman\\s+et\\s+al\\.?,?\\s*Ophthalmology\\s*2016)",
+      "reason": "Blocker B11. These three references could not be located, and a fourth attribution in the same block was provably wrong (initialRejectRate 0.12 credited to phase1_quality_baseline.md, which explicitly says it establishes no reject rate). A judge who checks one citation and finds it wrong discounts the whole deck.",
+      "instead": "Cite config/telemedicine_parameters.json, where each value is tagged SOURCED / DERIVED / ASSUMED against a checked reference. The likely real papers are John et al., Telemed J E Health 2012 (Sankara Nethralaya) and Prathiba & Rema, Int J Family Med 2011 - read the full texts before citing either."
+    }
+  ],
+  "superseded": [
+    {
+      "id": "ma-precision-pre-rebuild",
+      "pattern": "0\\.046",
+      "context": "microaneurysm|\\bMA\\b|precision",
+      "reason": "MA precision 0.046 is the PRE-REBUILD figure. It was bought by a stage-2 classifier discarding candidates on a train/serve geometry mismatch.",
+      "instead": "0.028 (IDRiD segmentation TEST split, n=27, micro-averaged, re-measured 2026-09-13)."
+    },
+    {
+      "id": "ma-recall-pre-rebuild",
+      "pattern": "0\\.077",
+      "context": "microaneurysm|\\bMA\\b|recall",
+      "reason": "MA recall 0.077 is the PRE-REBUILD figure.",
+      "instead": "0.409 (IDRiD segmentation TEST split, n=27, re-measured 2026-09-13)."
+    },
+    {
+      "id": "he-precision-pre-rebuild",
+      "pattern": "0\\.130",
+      "context": "h[ae]emorrhage|\\bHE\\b|precision",
+      "reason": "Haemorrhage precision 0.130 is the PRE-REBUILD figure.",
+      "instead": "0.164 (IDRiD segmentation TEST split, n=27, re-measured 2026-09-13)."
+    },
+    {
+      "id": "he-recall-pre-rebuild",
+      "pattern": "0\\.054",
+      "context": "h[ae]emorrhage|\\bHE\\b|recall",
+      "reason": "Haemorrhage recall 0.054 is the PRE-REBUILD figure.",
+      "instead": "0.311 (IDRiD segmentation TEST split, n=27, re-measured 2026-09-13)."
+    },
+    {
+      "id": "ma-precision-unshipped-two-stage",
+      "pattern": "0\\.054",
+      "context": "microaneurysm|\\bMA\\b",
+      "reason": "MA precision 0.054 came from the two-stage evaluation of a pipeline that was never actually wired into production - EXTRACTLESIONFEATURES called DETECTDARKLESIONS with no classifier at all. It measured something that never shipped.",
+      "instead": "0.028, which is what the shipping stage-1-alone configuration actually scores."
+    },
+    {
+      "id": "he-precision-unshipped-two-stage",
+      "pattern": "0\\.088",
+      "context": "h[ae]emorrhage|\\bHE\\b",
+      "reason": "Haemorrhage precision 0.088 came from the two-stage evaluation of a pipeline that never shipped.",
+      "instead": "0.164, the shipping stage-1-alone figure."
+    }
+  ],
+  "protocol_check": {
+    "_comment": [
+      "Hard rule 3: every reported metric carries its evaluation protocol. A bare",
+      "sensitivity or specificity in a results table is incomplete - published DRIVE",
+      "numbers are famously incomparable for exactly this reason.",
+      "",
+      "This is a WARNING by default because prose legitimately spreads the protocol",
+      "across a sentence or a table header. Run with --strict to make it fatal."
+    ],
+    "metric_pattern": "(sensitivit|specificit|\\bsens\\b|\\bspec\\b|\\bAUC\\b|\\bQWK\\b|kappa|precision|recall)",
+    "number_pattern": "\\d{1,3}(\\.\\d+)?\\s*%|0\\.\\d{3,4}",
+    "protocol_tokens": [
+      "aptos",
+      "idrid",
+      "messidor",
+      "drive",
+      "e-ophtha",
+      "train",
+      "test",
+      "val",
+      "held-?(out|back)",
+      "split",
+      "n\\s*=\\s*\\d+",
+      "cross-?validat",
+      "in-?domain",
+      "external",
+      "target",
+      "assum",
+      "threshold",
+      "benchmark",
+      "literature",
+      "gulshan",
+      "idx-?dr",
+      "ceiling",
+      "published",
+      "gate\\b"
+    ]
+  },
+  "scan": {
+    "include_globs": [
+      "*.md",
+      "*.m",
+      "*.py",
+      "*.html",
+      "*.slx.txt"
+    ],
+    "exclude_dirs": [
+      ".git",
+      "data",
+      "models",
+      "results",
+      "reports",
+      "resources",
+      "node_modules",
+      "__pycache__",
+      ".venv",
+      "venv",
+      "webapp/jobs",
+      "docs/figures"
+    ],
+    "_exclude_note": "These three files quote banned claims on purpose: the rulebook defines them, the checker documents them, and the test asserts they are still caught. Scanning them would make the checker fail on its own evidence.",
+    "exclude_files": [
+      "config/claim_rules.json",
+      "tools/check_claims.py",
+      "tools/test_check_claims.py",
+      "webapp/index.html.bak"
+    ]
+  }
+}
