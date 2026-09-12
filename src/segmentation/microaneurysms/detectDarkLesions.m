@@ -26,19 +26,27 @@ function d = detectDarkLesions(img, ctx, opts)
 %   Last held-out measurement (IDRiD segmentation TEST split, n=27, FOV-masked,
 %   per-lesion component matching, micro-averaged - VALIDATELESIONDETECTORS):
 %
-%       microaneurysms  precision 0.046  recall 0.077
-%       haemorrhages    precision 0.130  recall 0.054
+%       microaneurysms  precision 0.028  recall 0.409
+%       haemorrhages    precision 0.164  recall 0.311
 %
 %   against a display gate of precision >= 0.50 AND recall >= 0.10 frozen in
 %   config/lesion_validation_thresholds.json. Both fail. Neither count reaches
 %   a clinician: EXTRACTLESIONFEATURES reads the verdict from
 %   results/lesion_validation.mat and fails closed.
 %
-%   Those numbers were produced by a pipeline carrying the four defects listed
-%   below, plus a fifth - the stage-2 threshold was a hardcoded 0.5 nobody had
-%   chosen, now selected on TRAIN by FITLESIONOPERATINGPOINT. All five are
-%   fixed. None has been re-measured. Nothing in this header claims the fixes
-%   helped: run REBUILDDARKLESIONDETECTORS and read the new numbers.
+%   Re-measured 2026-09-13 after the five defects listed below were fixed - the
+%   fifth being a hardcoded stage-2 threshold of 0.5 nobody had chosen, now
+%   selected on TRAIN by FITLESIONOPERATINGPOINT. REBUILDDARKLESIONDETECTORS
+%   retrained both classifiers under the current patchGeometry stamp; stage 1
+%   alone won on both channels, so applyClassifier = false is what ships.
+%
+%   What the fixes bought: recall. Both channels now CLEAR the recall gate and
+%   fail on precision alone (MA recall 0.077 -> 0.409, HE recall 0.054 ->
+%   0.311, HE F1 0.077 -> 0.215). MA precision moved the wrong way, 0.046 ->
+%   0.028, because stage 2 is off and the candidate pool roughly tripled - the
+%   old figure was bought by a classifier discarding candidates on a
+%   train/serve geometry mismatch. The verdict is unchanged: not displayed.
+%   Superseded figures, do not restate: MA 0.046/0.077, HE 0.130/0.054.
 %
 %   Morphological MA detection without learned false-positive rejection is a
 %   known-hard problem; the best result ever recorded on IDRiD is AUPR 0.5017
@@ -119,7 +127,7 @@ function d = detectDarkLesions(img, ctx, opts)
 
     WORK_FOV_PX = 1536;   % higher than other detectors: MAs are tiny
     scale = min(1, WORK_FOV_PX / fov.diameter);
-    small = imresize(im2double(img), scale, 'bilinear');
+    small = resizeToDouble(img, scale);
     mask = imresize(fov.mask, scale, 'nearest');
     if size(small,3) ~= 3, small = repmat(small,1,1,3); end
 
@@ -248,13 +256,17 @@ function d = detectDarkLesions(img, ctx, opts)
         switch chan
             case 'microaneurysms'
                 if isempty(maCentroids), continue; end
-                keep = scoreLesionCandidates(small, maCentroids, C) >= thrC;
+                [srcImg, cScale] = resolvePatchSource(C, img, small, scale);
+                keep = scoreLesionCandidates(srcImg, maCentroids, C, ...
+                    'centroidScale', cScale) >= thrC;
                 maMask = dropRejected(maMask, keep);
                 maCentroids = maCentroids(keep, :);
 
             case 'haemorrhages'
                 if isempty(haemCentroids), continue; end
-                keep = scoreLesionCandidates(small, haemCentroids, C) >= thrC;
+                [srcImg, cScale] = resolvePatchSource(C, img, small, scale);
+                keep = scoreLesionCandidates(srcImg, haemCentroids, C, ...
+                    'centroidScale', cScale) >= thrC;
                 haemMask = dropRejected(haemMask, keep);
                 haemCentroids = haemCentroids(keep, :);
                 haemArea = haemArea(keep);

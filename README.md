@@ -148,14 +148,15 @@ Fundus Image → [1] Quality Assessment & Enhancement
 - [x] Define team roles and phase ownership
 - [x] Repo structure, `.gitignore`, path config, environment checker, smoke tests
       → [docs/environment_setup.md](docs/environment_setup.md)
-- [ ] Install MATLAB + toolboxes — step-by-step guide ready at
-      [docs/matlab_install.md](docs/matlab_install.md). **Must be R2026a+**: the dev
-      machine's RTX 5050 is compute capability 12.0, unsupported before R2026a.
-      `setup_drishti` / `check_environment` are written but unexecuted until then.
+- [x] Install MATLAB + toolboxes — **R2026a installed and in use.**
+      ⚠️ **SimEvents is licensed but NOT installed** (`ver()` and `license()` both
+      pass for an absent product); `check_environment` now reports `[NOT INST]`
+      and the Simulink model uses the native continuous-queue formulation.
 - [x] Organize & verify APTOS, IDRiD, DRIVE, Messidor-2 → [docs/datasets.md](docs/datasets.md)
       (`python tools/verify_setup.py` → READY)
-- [ ] **Download Messidor-2 grade labels** — our copy has no labels; blocks *all* of
-      Phase 6 ([why & where](docs/datasets.md))
+- [x] **Messidor-2 grade labels obtained** (Krause et al. adjudicated). Used for the
+      single held-out read on 2026-09-12 — **that one-shot is now SPENT**, see
+      [docs/phase6_results.md](docs/phase6_results.md) §3.
 - [ ] **Obtain DRIVE test-set vessel GT** — withheld in our copy; affects Phase 2 comparability
 - [x] Literature review with sourced benchmark targets → [docs/literature_benchmarks.md](docs/literature_benchmarks.md)
 
@@ -183,11 +184,15 @@ Fundus Image → [1] Quality Assessment & Enhancement
 - [x] Optic disc & fovea localization (validated against IDRiD annotations)
 - [x] Vessel segmentation — DRIVE **Dice 0.622** vs 0.828 U-Net benchmark.
       ⚠️ scored on the *training* split; test GT is withheld in our copy (B2)
-- [x] Microaneurysm detection — validated, and it **does not work**: recall 0.221 /
-      precision 0.029 single-stage. Two-stage classifier raises precision to 0.054 —
-      still 10× below the display bar. **Suppressed from the report**
-- [x] Exudate + haemorrhage — haemorrhage precision 0.088 (suppressed).
-      Hard exudates **0.549 precision at k=3.0**, the one displayed channel
+- [x] Microaneurysm detection — validated, and it **does not work**: precision
+      **0.028** / recall **0.409** on the held-out IDRiD test split
+      (micro-averaged, n=27, re-measured 2026-09-13). Clears the recall gate,
+      ~18× below the 0.50 precision bar. Stage 2 is **off** — it lost the TRAIN
+      sweep to keeping every candidate. **Suppressed from the report**
+- [x] Exudate + haemorrhage — haemorrhage precision **0.164** / recall 0.311
+      (suppressed; improved on every axis by the rebuild, still ~3× short).
+      Hard exudates **0.817 precision / 0.133 recall at k=3.0**, the one
+      displayed channel
 - [x] Neovascularization heuristic — implemented, **never validated** (no ground truth)
 - [x] Consolidate into a structured feature vector — `extractLesionFeatures.m`,
       contract in `config/lesion_features.json`
@@ -205,7 +210,10 @@ Fundus Image → [1] Quality Assessment & Enhancement
       the domains trained on, **not on a third unseen one** (Messidor-2 AUC 0.885 → 0.876)
 - [x] Evaluate: sensitivity, specificity, AUC, per-class confusion matrix
 - [x] Cross-validate against Messidor-2 — **Sens 31.2% at the frozen threshold.**
-      Per-site calibration with ~200 labelled images recovers **90.0%**
+      Per-site calibration narrows that gap but does **not** close it: measured
+      end to end on IDRiD (fit on TRAIN n=413, evaluated on held-back TEST
+      n=103) it moves **75.0% → 82.8%** sensitivity for **97.4% → 76.9%**
+      specificity — [docs/site_calibration.md](docs/site_calibration.md)
 
 > ⚠️ **The "integrated outperforms single-technique" claim in §2 is NOT supported by
 > measurement.** We built it and tested it. Module 2's contribution is *explanatory*
@@ -236,8 +244,9 @@ Fundus Image → [1] Quality Assessment & Enhancement
 
 Results: **[docs/phase5_results.md](docs/phase5_results.md)**.
 
-**Measured:** AI service time **7.65 s/image on CPU** (the code had assumed
-0.120 s — a 64× gap). A GPU saves 0.2% of pipeline time and is *slower* for
+**Measured:** AI service time on CPU — **10.56 s/image mean** (median 7.61,
+33% of images 13-25 s). Module 5 sizes on the mean, not the median. The code had
+assumed 0.120 s — an ~88× gap. A GPU saves 0.2% of pipeline time and is *slower* for
 Grad-CAM, so **a PHC edge node does not need a GPU**. Minimum viable district =
 **6 cameras/technicians, 1 uplink, 1 compute node, 1 ophthalmologist**;
 **acquisition is the binding constraint**, not specialist review — confirmed by
@@ -248,11 +257,18 @@ review time, which is a design target and has never been measured** — no
 clinician has been timed. Treat staffing numbers accordingly.
 
 **Per-site calibration is a deployment requirement.** Sensitivity is not one
-number: 90.3% is APTOS-internal, the same frozen threshold measured **31.2%** on
-Messidor-2 uncalibrated, and **90.0%** only after calibrating on ~200 local
-images. Calibration buys sensitivity by spending specificity (99.5% → 57.9%),
-which raises specialist load from ~9 to ~89 min/day — so the honest benefit of AI
-triage is **~2×**, not the ~10× an idealised classifier implies.
+number: 90.3% is APTOS-internal, and the same frozen threshold measured **31.2%**
+on Messidor-2 uncalibrated. Calibration is fitted, saved and loaded
+automatically, and on the one site measured end to end (IDRiD, fit on TRAIN
+n=413, evaluated on held-back TEST n=103) it moves sensitivity **75.0% → 82.8%**
+and specificity **97.4% → 76.9%**.
+
+**It does not reach the >90% target out of sample** — 90.3% on the images it was
+fitted to became 82.8% on images the fit never saw. Calibration buys sensitivity
+by spending specificity, which raises specialist load from ~11 to ~65 min/day, so
+the honest benefit of AI triage is **~3×**, not the ~6× an idealised classifier
+implies. Details and the full protocol:
+[docs/site_calibration.md](docs/site_calibration.md).
 
 ### Phase 6 — Integration, Validation & Benchmarking ✅ *results in [docs/phase6_results.md](docs/phase6_results.md)*
 - [x] Wire all 5 modules into a single MATLAB pipeline — `src/runDrishtiSystem.m`
@@ -275,22 +291,56 @@ triage is **~2×**, not the ~10× an idealised classifier implies.
 > integration actually buys is explainability, a recapture path and deployability.
 
 ### Phase 7 — Demo, Docs & Pitch
-- [ ] Package a working prototype demo (sample images → report output, live or recorded)
-- [ ] Finalize Simulink dashboard visuals
-- [ ] Prepare pitch deck: problem → architecture → validation metrics → deployment impact
-- [ ] Record demo video (if required for submission)
-- [ ] Final README, architecture diagram, and code cleanup
+- [x] Package a working prototype demo — **`demo/run_demo.m`**, one command:
+      sample images → HTML reports → district sizing. Prints measured performance
+      *with its caveats* so the honest version is the default version.
+- [x] Finalize Simulink dashboard visuals — 4 figures in `docs/figures/`,
+      generated from measured results by `make_dashboard_figures()`.
+      (`run_district_scenario_analysis(true)` now actually produces them — the
+      `savePlots` flag was previously accepted, documented and never used.)
+- [x] Prepare pitch deck — slide-by-slide content in
+      **[docs/pitch_deck.md](docs/pitch_deck.md)**, every figure traceable to a
+      results document. Needs building into slides by R5.
+- [ ] Record demo video (if required for submission) — script-ready; `run_demo`
+      is the recordable artefact
+- [~] Final README, architecture diagram, and code cleanup — architecture diagram
+      done (pitch deck slide 2); README accurate; cleanup pending
 
 ---
 
 ## 6. Success Metrics Checklist
 
-- [ ] Sensitivity **> 90%** for referable DR (Level 2+)
-- [ ] Specificity **> 85%** for referable DR
-- [ ] Grad-CAM explanations qualitatively validated as clinically meaningful
-- [ ] Sub-30-second reviewable report format
-- [ ] Simulink model producing actionable staffing/infrastructure recommendations for 100,000+ patients/year
-- [ ] Integrated pipeline demonstrably outperforms a single end-to-end baseline model on held-out benchmark data
+*Status against what has actually been measured. Where a target is met only under
+a condition, the condition is stated — an unqualified tick here would misrepresent
+the system.*
+
+- [ ] Sensitivity **> 90%** for referable DR (Level 2+) — **met in-domain only.**
+      90.3% on APTOS (in-domain). On the held-out Messidor-2 the same frozen
+      threshold gave **31.2%**. Per-site calibration recovers part of that gap —
+      **82.8%** on a held-back split at the one site measured end to end — but
+      **no operating point currently reaches 90% out of sample.**
+- [ ] Specificity **> 85%** for referable DR — **traded against the above.**
+      95.9% in-domain and 99.5% uncalibrated on Messidor-2, but the calibrated
+      operating point that lifts sensitivity to 82.8% drops specificity to
+      **76.9%**. Neither target is met at the same operating point.
+- [ ] Grad-CAM explanations qualitatively validated as clinically meaningful —
+      **not validated.** Lesion enrichment 1.51× is above chance but weak, and no
+      ophthalmologist has rated the heatmaps. Protocol ready
+      ([docs/gradcam_review_protocol.md](docs/gradcam_review_protocol.md)).
+- [ ] Sub-30-second reviewable report format — **not demonstrated.** No clinician
+      has been timed. `usabilityPass` measured a **~38 s read-time floor** for the
+      report's critical path (126 words at 200 wpm) — that is a floor on *reading*
+      alone, excluding the image and any judgement, and it is already **above** the
+      30 s target. The 21.6 s figure quoted elsewhere is a different quantity (an
+      assumed *decision* time averaged over a mostly grade-0 cohort), not a
+      measurement — see [docs/phase5_results.md](docs/phase5_results.md) §6.
+- [x] Simulink model producing actionable staffing/infrastructure recommendations
+      for 100,000+ patients/year — [docs/phase5_results.md](docs/phase5_results.md).
+      Figures are assumption-dependent (see §6 there).
+- [ ] Integrated pipeline demonstrably outperforms a single end-to-end baseline —
+      **tested three ways, does not hold.** Quality gate + grader is a *regression*
+      (−9.2 pp specificity); hybrid lesion features and multi-domain training also
+      failed to beat the baseline. See [docs/phase6_results.md](docs/phase6_results.md) §4.
 
 ---
 
@@ -323,14 +373,22 @@ DRishti_AI/
 │   │   ├── exudates_hemorrhages/  neovascularization/
 │   ├── grading/                  # Module 3
 │   ├── explainability/           # Module 4
+│   ├── app/                      # MATLAB dashboard + plain-language layer
 │   └── utils/
 ├── simulink/                     # Module 5
+├── webapp/                       # browser dashboard (server.py + index.html)
 ├── models/                       # trained weights - git-ignored
 ├── reports/                      # generated reports - git-ignored
 ├── results/                      # metrics, ROC curves - git-ignored
-└── docs/
+└── docs/                         # full index in docs/repository_map.md
+    ├── architecture.md           # how it fits together, and why
+    ├── workflow.md               # every command, and what not to run
+    ├── repository_map.md         # what lives where; what must never be deleted
+    ├── troubleshooting.md        # traps that cost real time
+    ├── phase1..phase6 results    # measured outcomes, one per phase
+    ├── clinical_definitions.md   # referable-DR endpoint, the DME call
+    ├── literature_benchmarks.md  # sourced targets; what is NOT comparable
     ├── datasets.md               # inventory, distributions, split strategy, gaps
-    ├── literature_benchmarks.md  # sourced targets we must beat
     ├── environment_setup.md      # this machine -> ready
     └── dataset_manifest.json     # generated by tools/organize_datasets.py
 ```

@@ -3,11 +3,12 @@
 *Measured 2026-09-12. Every number here is reproducible with the command shown
 beside it. Nothing in this document is quoted from an earlier write-up.*
 
-> **Status note.** The microaneurysm and haemorrhage numbers in §2 are the last
-> held-out measurement, and they predate five defects found afterwards in that
-> path (§4). All five are fixed; none of the numbers has been re-measured. Read
-> §2 as "what those channels scored with those bugs in", not as their current
-> state — and do not read §4 as a claim that anything improved.
+> **Status note (2026-09-13).** The dark-lesion path has been **re-measured** on
+> the held-out split after the five defects in §4 were fixed. §2 is current.
+> Microaneurysm and haemorrhage **recall rose ~5x and both channels now clear the
+> recall gate**; both still fail the precision gate, MA by ~18x. The set of
+> displayed channels is unchanged: hard exudates, and nothing else. §2a carries
+> the before/after and says which parts of it are attributable to the fixes.
 
 Phase 2 is **complete in the sense that matters**: all seven sub-tasks are built,
 each is measured against the ground truth that exists for it, the protocol is
@@ -52,22 +53,85 @@ counts). Single fixed operating point. An absent mask counts as *lesion absent*,
 so all 27 images score every channel — soft exudates are present in only 14, and
 scoring them on those 14 alone would discard every false positive on the other 13.
 
+*Measured 2026-09-13 02:03. Gate file sha256 `1c447a7428e4781a…` — unchanged from
+the freeze, so the bar was not touched between the two runs.*
+
 | channel | precision | recall | F1 | TP | FP | FN | verdict |
 |---|---|---|---|---|---|---|---|
-| microaneurysms | 0.046 | 0.077 | 0.057 | 86 | 1798 | 1001 | not validated |
-| haemorrhages | 0.130 | 0.054 | 0.077 | 58 | 388 | 505 | not validated |
+| microaneurysms | 0.028 | 0.409 | 0.053 | 457 | 15774 | 641 | not validated — precision |
+| haemorrhages | 0.164 | 0.311 | 0.215 | 165 | 839 | 368 | not validated — precision |
 | **hard exudates** | **0.817** | **0.133** | **0.229** | 795 | 178 | 3567 | **DISPLAYED** |
-| soft exudates | 0.038 | 0.026 | 0.031 | 1 | 25 | 37 | not validated |
+| soft exudates | 0.038 | 0.026 | 0.031 | 1 | 25 | 37 | not validated — precision |
+
+Both dark channels now fail on **precision alone**. Previously they failed both
+gates. That is a change in the shape of the failure, not a pass.
 
 **Why the test split.** `segmentExudates` ships `thresholdK = 3.0`, selected on
 the *training* split by `sweepExudateThreshold`. Scoring it there measures fit to
 the data that chose it. The test split has never fed a parameter choice.
 
-**Micro vs macro.** Macro (mean of per-image rates) gives MA 0.045, HE 0.154,
-EX 0.666, SE 0.000. **Every verdict is identical under both**, so the outcome is
-not an artefact of the aggregation choice.
+**Micro vs macro.** Macro (mean of per-image rates, images with nothing
+predicted left out of the mean rather than scored 0) gives precision MA 0.030,
+HE 0.150, EX 0.702, SE 0.111 and recall MA 0.438, HE 0.291, EX 0.167, SE 0.014.
+**All four verdicts are identical under both**, so no outcome here is an artefact
+of the aggregation choice.
+
+⚠️ Macro is **not comparable to the 2026-09-12 run**. The NaN-omission rule above
+was introduced in the same commit as the five fixes, so the estimator changed
+under it. Micro — the gating statistic — is comparable, and §2a uses only micro.
 
 ---
+
+## 2a. What the five fixes actually did
+
+Same command, same split, same 27 images, same frozen gate file, one fixed
+operating point on each side. Micro-averaged:
+
+| channel | metric | 2026-09-12 (with the five defects) | 2026-09-13 (fixed) | change |
+|---|---|---|---|---|
+| microaneurysms | precision | 0.046 | **0.028** | **worse, 0.6x** |
+| | recall | 0.077 | **0.409** | better, 5.3x |
+| | F1 | 0.057 | 0.053 | flat |
+| | TP | 86 | 457 | 5.3x |
+| | FP | 1798 | 15774 | 8.8x |
+| haemorrhages | precision | 0.130 | **0.164** | better, 1.3x |
+| | recall | 0.054 | **0.311** | better, 5.8x |
+| | F1 | 0.077 | **0.215** | better, 2.8x |
+| | TP | 58 | 165 | 2.8x |
+| | FP | 388 | 839 | 2.2x |
+| hard exudates | all | 0.817 / 0.133 / 0.229 | 0.817 / 0.133 / 0.229 | **identical** |
+| soft exudates | all | 0.038 / 0.026 / 0.031 | 0.038 / 0.026 / 0.031 | **identical** |
+
+**The two exudate channels are the control, and they held.** Their micro
+precision, recall, F1, TP, FP and FN are identical across the two runs, down to
+the count. The five fixes were confined to the dark-lesion path, so the exudate
+channels should not have moved, and they did not. That is what makes the MA and
+haemorrhage deltas attributable to the fixes rather than to run-to-run drift.
+
+**Haemorrhages improved on every axis.** Precision, recall and F1 all rose; F1
+nearly tripled. The channel is now short of the precision gate by ~3x rather
+than ~4x.
+
+**Microaneurysm precision got worse, and that is expected, not a regression.**
+Two things changed direction at once:
+
+- Stage 2 is now **off** for this channel (`applyClassifier = false`, chosen on
+  TRAIN — see [train_operating_points_frozen.md](train_operating_points_frozen.md)),
+  because it lost the TRAIN sweep to keeping every candidate. The old 0.046 was
+  measured with a classifier connected *at the wrong patch geometry* — it was
+  discarding candidates on the strength of a train/serve mismatch. Precision it
+  bought that way was not precision the method had.
+- The generator now runs at `threshSD = 1.00` instead of the 2.0 the production
+  path was feeding a classifier trained at 0.75. That roughly triples the
+  candidate pool, which is the direct cause of FP rising 8.8x.
+
+The net on F1 is flat (0.057 → 0.053) and the net on recall is 5.3x. What the
+fixes bought on this channel is a detector whose training and inference agree
+and whose recall ceiling is real; what they did not buy is precision.
+
+**Neither dark channel is displayable, and neither is close.** MA needs an ~18x
+precision improvement, haemorrhages ~3x. Nothing in §2 or §4 licenses showing
+either one to a clinician.
 
 ## 3. Three things this pass fixed
 
@@ -223,19 +287,29 @@ train is not pedantry: if the threshold were picked on test, the gate in
 `lesion_validation_thresholds.json` would be certifying a number chosen to pass
 it.
 
-**This is where the haemorrhage question gets settled.** Wiring the classifier
-in dropped held-out haemorrhage F1 from 0.138 to 0.077 (precision 0.115 →
-0.130, recall 0.174 → 0.054). That observation came from the **test** split and
-was therefore not actionable there — acting on it would be test-set tuning,
-which is the failure this phase's whole protocol exists to prevent. So
-stage-1-alone is entered in the TRAIN sweep as an ordinary row (threshold
-−Inf, keep every candidate). If it wins under the pre-registered selection
-rule, `applyClassifier` is written `false` and the shipped detector skips stage
-2 for that channel. Decided on train, by a rule fixed in advance, recorded in a
-committed file.
+**This is where the haemorrhage question gets settled — and it is now settled.**
+Wiring the classifier in had dropped held-out haemorrhage F1 from 0.138 to 0.077.
+That observation came from the **test** split and was therefore not actionable
+there; acting on it would be test-set tuning, which is the failure this phase's
+whole protocol exists to prevent. So stage-1-alone was entered in the TRAIN sweep
+as an ordinary row (threshold −Inf, keep every candidate).
 
-Practical impact today remains nil: haemorrhages fail the reporting gate with or
-without the classifier, so nothing reaches a clinician either way.
+**It won, on both channels.** `applyClassifier = false` for microaneurysms *and*
+haemorrhages in [`config/lesion_operating_points.json`](../config/lesion_operating_points.json),
+selected on TRAIN at 2026-09-12 22:54 by the pre-registered rule, `reachedTarget
+= false` on both because no threshold reached the TRAIN precision target of 0.55.
+**The shipped dark-lesion detector is stage 1 alone.** The §2 numbers measure
+that, not a two-stage detector.
+
+A separate 2x2 ablation then asked *why* stage 2 is useless here — whether the
+patch-resolution change had destroyed the signal. It had not: geometry accounts
+for nothing (all four within-threshSD comparisons under 1.5 SE), while the
+candidate pool accounts for everything (at `threshSD` 1.0 both classifiers sit at
+chance; at 1.5 they clear it). Full grid, standard errors and the freeze decision:
+[train_operating_points_frozen.md](train_operating_points_frozen.md) §4–§5.
+
+Practical impact on the report remains nil: both dark channels fail the precision
+gate with or without the classifier, so nothing reaches a clinician either way.
 
 ### 4f. What is still true regardless
 
@@ -255,8 +329,8 @@ is. A per-lesion MA score near 0.9 after this would still mean a bug or a leak.
 | 2b | Fovea localization | built | derived from 2a; drives laterality and the DME distance |
 | 2c | Vessel segmentation | built, measured **non-standard** | `evaluateSegmentation('vessels')`. **DRIVE test GT is withheld (B2)**, so it is scored on the 20 *training* images. Not comparable to published test-split tables |
 | 2d | Hard + soft exudates | **hard validated**, soft failed | §2, §3c |
-| 2e | Microaneurysms | built, failed gate | §2; five defects fixed since, unmeasured — §4 |
-| 2f | Haemorrhages | built, failed gate | §2; five defects fixed since, unmeasured — §4 |
+| 2e | Microaneurysms | built, **failed gate on precision** | §2, re-measured 2026-09-13 after the five fixes; recall gate now passed, precision short ~18x — §2a |
+| 2f | Haemorrhages | built, **failed gate on precision** | §2, re-measured 2026-09-13; improved on every axis, precision short ~3x — §2a |
 | 2g | Neovascularization | built, **unvalidatable** | no ground truth exists in any corpus we hold; it is a heuristic and is never displayed as a finding |
 
 ---
@@ -291,3 +365,12 @@ would mean a bug or a leak, not a breakthrough.
 What Phase 2 delivers is one trustworthy channel, three honestly-labelled
 failures, a reporting gate that cannot be bypassed by editing a flag, and a
 re-runnable command behind every number.
+
+After the five-defect fix and the re-measurement, the failure is better
+characterised than it was: **both dark channels clear the recall gate and fail
+only on precision**, the stage-2 classifier is measured as useless *and the
+resolution explanation for that has been tested and refuted*, and the train→test
+gap is small (MA precision 0.024 train → 0.028 test; HE 0.174 → 0.164). These
+detectors are not overfit. They are weak, on a channel published work also finds
+hard, with 519 MA positives from 54 images to learn from. The remaining lever is
+annotated data.

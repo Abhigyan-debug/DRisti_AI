@@ -98,7 +98,7 @@ function d = locateOpticDisc(img, opts)
     WORK_FOV_PX = 512;
     scale = min(1, WORK_FOV_PX / fov.diameter);
     if scale < 1
-        small = imresize(im2double(img), scale, 'bilinear');
+        small = resizeToDouble(img, scale);
         mask = imresize(fov.mask, scale, 'nearest');
     else
         scale = 1;

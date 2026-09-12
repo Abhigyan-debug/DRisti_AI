@@ -1,6 +1,6 @@
 {
   "_comment": "Module 5 (Simulink screening-throughput) input parameters. Owned by R3 (Abhigyat), consumed by R4 (Natik). Every parameter carries a 'confidence' tag: SOURCED = read from a cited primary source; DERIVED = computed from a sourced figure or from our own measured dataset; ASSUMED = a placeholder we chose, NOT evidence. The README risk table names unrealistic assumptions as a headline project risk - so ASSUMED values must appear as assumptions in the Phase 5 write-up, never as findings. Reasoning and citations: docs/telemedicine_parameters.md",
-  "_version": "1.2.0",
+  "_version": "1.4.0",
   "_updated": "2026-09-12",
   "_owner": "R3 - clinical research",
   "demand": {
@@ -92,21 +92,35 @@
   },
   "ai_processing": {
     "inference_time_per_image_s": {
-      "value": 7.65,
+      "value": 10.56,
       "unit": "seconds",
       "confidence": "MEASURED",
       "device": "CPU",
-      "source": "simulink/benchmarkInferenceTime.m, n=10 IDRiD images (2 warm-up discarded), MATLAB R2026a",
-      "protocol": "Wall-clock, sequential, single process, one image at a time. Median; mean 10.15 s, sd 4.76 s. An independent earlier run gave 7.76 s (agreement within ~1.5%). Per-image SERVICE time for the FULL deployed pipeline, not a CNN forward pass.",
-      "breakdown": {
-        "full_pipeline_s": 7.65,
-        "quality_gate_s": 2.59,
-        "grade_and_explain_s": 4.74,
-        "grading_only_s": 3.19
+      "statistic": "MEAN - deliberately, not the median. See why_mean_not_median.",
+      "source": "simulink/benchmarkInferenceTime.m, n=18 IDRiD images (2 warm-up discarded), MATLAB R2026a, CPU",
+      "distribution": {
+        "mean_s": 10.56,
+        "median_s": 7.61,
+        "sd_s": 5.37,
+        "min_s": 6.76,
+        "p25_s": 7.31,
+        "p75_s": 13.59,
+        "p90_s": 18.94,
+        "max_s": 25.23,
+        "pct_images_over_12s": 33,
+        "shape": "Right-skewed and near-bimodal: ~two thirds of images run 6.8-8.3 s, ~one third run 13-25 s. The slow set is reproducible - the same images are slow in every run - so it is image content, not measurement noise."
       },
-      "device_note": "THIS IS THE CPU NUMBER THE CONTRACT ASKED FOR. explainGrading.m builds a plain CPU dlarray, so predict() executes on the CPU even though a GPU is present - an earlier revision of this entry mislabelled the same measurement 'dev GPU RTX 5050' on the strength of the GPU merely existing. Measured directly: CNN forward pass CPU 0.050 s vs GPU 0.034 s; forward+Grad-CAM CPU 0.514 s vs GPU 0.732 s (GPU SLOWER - transfer overhead exceeds compute for a model this small).",
-      "deployment_implication": "A PHC edge node does NOT need a GPU. The pipeline is CPU-bound in classical CV (quality gate + Module 2), not in the network: moving the CNN to a GPU would save ~0.016 s of 7.65 s (0.2%). Edge feasibility now rests on whether ~7.7 s/image/node is acceptable, not on GPU availability.",
-      "note": "REPLACES the 0.120 s placeholder in simulink/screening_params.m, which was a CNN forward pass and understated the deployed pipeline by ~64x. grading_only_s is the same pipeline with Module 2 and Grad-CAM disabled (explainGrading computeCam=false): a deployable configuration trading the heatmap and lesion evidence for 2.4x throughput."
+      "why_mean_not_median": "A queueing model's service time is an EXPECTATION: throughput is total work over time, so the mean is the correct statistic. An earlier revision of this entry used the median (7.65 s), which under-states the compute requirement by ~39% on this distribution. The median is the right number for answering 'how long does a typical image take'; it is the wrong number for sizing a compute node.",
+      "cold_start_note": "The FIRST image of a MATLAB session costs ~16-25 s (model load, BLAS/JIT warm-up). Warm-up images are excluded from these statistics. A long-running service pays this once; a per-invocation script pays it every time.",
+      "breakdown_warm_median_s": {
+        "full_pipeline": 7.61,
+        "quality_gate": 2.59,
+        "grade_and_explain": 4.74,
+        "grading_only": 3.19,
+        "report_generation": 0.21
+      },
+      "device_note": "CPU. explainGrading.m builds a plain CPU dlarray, so predict() runs on the CPU even with a GPU present. Measured: CNN forward CPU 0.050 s vs GPU 0.034 s; forward+Grad-CAM CPU 0.514 s vs GPU 0.732 s (GPU SLOWER - transfer overhead exceeds compute at this model size).",
+      "deployment_implication": "A PHC edge node does NOT need a GPU: the pipeline is CPU-bound in classical CV, and moving the CNN to a GPU would save ~0.016 s of ~10.6 s. Report generation is negligible (0.21 s)."
     },
     "quality_reject_rate": {
       "value": 0.109,
@@ -131,7 +145,15 @@
       "value": 30,
       "unit": "seconds",
       "confidence": "ASSUMED",
-      "note": "This is our Module 4 DESIGN TARGET, not an observed figure. Using it as a model input makes the throughput result conditional on Module 4 hitting its target - state that. R4 should measure the real number with a stopwatch in Phase 4 and feed it back."
+      "status": "UNVALIDATED - no clinician has been timed",
+      "note": "This is our Module 4 DESIGN TARGET, not an observed figure. Using it as a model input makes every throughput result conditional on Module 4 hitting that target - state that.",
+      "measured_counter_evidence": {
+        "read_time_floor_s": 38,
+        "source": "src/explainability/usabilityPass.m - critical path of the rendered report is ~126 words; 38 s is that at 200 wpm silent reading",
+        "what_it_is": "A FLOOR on reading alone: it assumes the reviewer reads each word once, looks at no image, and makes no judgement. A real review also inspects the Grad-CAM overlay against the evidence table, which is the slow part and is NOT included.",
+        "implication": "The measured floor (38 s) is ALREADY ABOVE the assumed review time (30 s). If anything this assumption is OPTIMISTIC, so specialist-load figures in docs/phase5_results.md section 5 are more likely under-estimates than over-estimates. Do not treat 30 s as conservative."
+      },
+      "to_close": "Sit a clinician in front of reports/usability/index.html with a stopwatch. The review set and protocol are already generated by usabilityPass.m. Until then every staffing number derived from this value is unvalidated."
     },
     "referral_rate": {
       "value": 0.0454,

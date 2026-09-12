@@ -1,4 +1,4 @@
-function P = cutCandidatePatches(workImage, centroids, patchPx, idx)
+function P = cutCandidatePatches(workImage, centroids, patchPx, idx, centroidScale)
 %CUTCANDIDATEPATCHES  The one place a stage-2 candidate patch is ever cut.
 %
 %   P = CUTCANDIDATEPATCHES(workImage, centroids, patchPx) returns a
@@ -44,28 +44,68 @@ function P = cutCandidatePatches(workImage, centroids, patchPx, idx)
 %   applied identically on both sides, so the classifier is trained on the same
 %   thing it is asked to score.
 %
-%   See also DETECTDARKLESIONS, BUILDCANDIDATEDATASET, TRAINCANDIDATECLASSIFIER.
+%   PATCH GEOMETRY IS A CHOICE, AND IT IS THE CALLER'S
+%   --------------------------------------------------
+%   P = CUTCANDIDATEPATCHES(image, centroids, patchPx, idx, centroidScale)
+%   multiplies the (working-scale) centroids by `centroidScale` before cutting,
+%   so the same centroids can address either image:
+%
+%       centroidScale = 1        cut from the WORKING-scale frame
+%       centroidScale = 1/scale  cut from the FULL-RESOLUTION frame
+%
+%   The patch is always patchPx square IN THE TARGET IMAGE'S PIXELS. So a
+%   full-resolution patch covers LESS retina but resolves it ~2.2x more finely
+%   on IDRiD, and a working-scale patch covers more retina at coarser detail.
+%   Neither is obviously right for microaneurysms - they are a few tens of
+%   pixels across at full resolution, so the texture that separates one from a
+%   dark noise blob may not survive downsampling, while the surrounding context
+%   that separates one from a vessel cross-section may need the wider view.
+%   ABLATECANDIDATEPATCHGEOMETRY measures which.
+%
+%   What must never differ again is the geometry between the two SIDES: the
+%   model records which one it was trained under (meta.patchGeometry) and
+%   DETECTDARKLESIONS cuts to match.
+%
+%   See also DETECTDARKLESIONS, BUILDCANDIDATEDATASET, TRAINCANDIDATECLASSIFIER,
+%   RESOLVEPATCHSOURCE, ABLATECANDIDATEPATCHGEOMETRY.
 
     arguments
         workImage (:,:,:) {mustBeNumeric}
         centroids (:,2) double
         patchPx (1,1) double
         idx (:,1) double = (1:size(centroids,1))'
+        centroidScale (1,1) double {mustBePositive} = 1
     end
 
-    % im2single is a no-op on a double already in [0,1] and divides a uint8
-    % by 255, so a caller handing over a raw frame gets the same [0,1] range
-    % the classifier was trained on rather than a silently 255x brighter patch.
-    workImage = im2single(workImage);
-    if size(workImage,3) == 1, workImage = repmat(workImage,1,1,3); end
+    % CONVERT THE PATCH, NOT THE FRAME.
+    %
+    % This used to run `workImage = im2single(workImage)` before the loop. On
+    % the full-resolution path that is a 4288x2848x3 single = 146 MB temporary
+    % allocated to read a handful of 48 px windows out of it - and
+    % SCORELESIONCANDIDATES calls this once per chunk, so a 1200-candidate
+    % image churned that allocation ~38 times. It is a pure waste that also
+    % fragments the heap, and it contributed to the host-memory exhaustion that
+    % killed a long ablation run.
+    %
+    % im2single on the small extracted window instead is the same arithmetic
+    % (it scales elementwise) at 27 kB a time. Kept because it is what makes a
+    % uint8 frame and a [0,1] double frame produce the same patch values: a
+    % raw uint8 frame would otherwise be 255x too bright for the classifier.
+    isGray = size(workImage,3) == 1;
     H = size(workImage,1); W = size(workImage,2);
     half = floor(patchPx/2);
 
     P = zeros([patchPx patchPx 3 numel(idx)], 'single');
     for j = 1:numel(idx)
-        ctr = round(centroids(idx(j), :));
-        rows = min(max(ctr(2)-half : ctr(2)+half-1, 1), H);
-        cols = min(max(ctr(1)-half : ctr(1)+half-1, 1), W);
-        P(:,:,:,j) = single(workImage(rows, cols, :));
+        ctr = round(centroids(idx(j), :) * centroidScale);
+        % Span exactly patchPx. Writing this as ctr-half : ctr+half-1 gives
+        % 2*half samples, which is one short whenever patchPx is ODD - an
+        % assignment-size error rather than a silent one, but only for callers
+        % that pass an odd size. Production uses 48, so it sat here unfired.
+        rows = min(max(ctr(2)-half : ctr(2)-half+patchPx-1, 1), H);
+        cols = min(max(ctr(1)-half : ctr(1)-half+patchPx-1, 1), W);
+        patch = im2single(workImage(rows, cols, :));
+        if isGray, patch = repmat(patch, 1, 1, 3); end
+        P(:,:,:,j) = patch;
     end
 end

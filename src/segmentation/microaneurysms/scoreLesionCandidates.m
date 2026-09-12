@@ -1,10 +1,17 @@
-function scores = scoreLesionCandidates(workImage, centroids, C)
+function scores = scoreLesionCandidates(srcImage, centroids, C, opts)
 %SCORELESIONCANDIDATES  Stage-2 classifier score for every candidate, unthresholded.
 %
-%   scores = SCORELESIONCANDIDATES(workImage, centroids, C) returns an N-by-1
-%   vector of positive-class probabilities, one per row of `centroids`
-%   ([x y] in workImage pixels), for the saved classifier struct C
+%   scores = SCORELESIONCANDIDATES(srcImage, centroids, C) returns an N-by-1
+%   double vector of positive-class probabilities, one per row of `centroids`
+%   ([x y] in WORKING-scale pixels), for the saved classifier struct C
 %   (fields `trained` and `meta`).
+%
+%   `srcImage` and the 'centroidScale' option must together match the geometry
+%   the model was trained under - use RESOLVEPATCHSOURCE to derive both from
+%   C.meta.patchGeometry rather than assuming one.
+%
+%   scores = SCORELESIONCANDIDATES(..., 'maxBatchItems', 128) caps how many
+%   patches go through the network in one forward pass.
 %
 %   WHY SCORES AND NOT A DECISION
 %   -----------------------------
@@ -26,23 +33,52 @@ function scores = scoreLesionCandidates(workImage, centroids, C)
 %   orientation at inference while validating on eight would silently
 %   under-deliver the measured operating point.
 %
-%   CHUNKED. This logic previously allocated every patch for every candidate in
-%   one array: zeros([48 48 3 n*8]) plus a full copy for the valid subset. On a
-%   noisy image the microaneurysm generator proposes tens of thousands of
-%   candidates, so n = 20000 is 4.4 GB for the array and 4.4 GB again for the
-%   copy. It stayed invisible while nothing in the production path loaded a
-%   classifier; wiring one in ran the validation out of memory on image 26 of
-%   27. Memory is bounded by CHUNK, not by how noisy the image is.
+%   BATCHING - AND WHY IT IS COUNTED IN VIEWS, NOT CANDIDATES
+%   ---------------------------------------------------------
+%   This used to chunk 1024 CANDIDATES at a time. With TTA that is 1024 x 8 =
+%   8192 patches in one forward pass, and the batch dimension is what drives
+%   activation memory: the first convolution alone holds
+%   8192 x 48 x 48 x 32 x 4 B = 2.4 GB, and the whole stack peaks near 8 GB.
+%   On the 8.5 GB RTX 5050 that is an out-of-memory abort partway through a
+%   54-image run.
+%
+%   The bug was writing the cap in candidates while the cost is in patches, so
+%   the real batch silently multiplied by 8 whenever TTA was on. The cap is now
+%   MAXBATCHITEMS - actual forward-pass patches - and the candidates per chunk
+%   are derived from it (256 items = 32 candidates with TTA, 256 without).
+%
+%   Batch size does not change the result in any way that matters. The network
+%   is in inference mode, so its batch-normalisation layers use their learned
+%   statistics rather than batch statistics, and every patch is scored
+%   independently of what it was batched with. Length and order are exactly
+%   preserved.
+%
+%   Values agree to floating-point noise rather than bit-for-bit: measured
+%   max |score(batch 256) - score(batch 64)| = 7.4e-09 over 652 candidates on
+%   IDRiD_01. That residue is cuDNN picking different reduction kernels for
+%   different batch shapes, not a change in what is computed. It is ~1e-7 of
+%   the smallest threshold step the operating-point sweep evaluates, so no
+%   candidate can change side because of it.
+%
+%   If a forward pass still runs out of memory, the batch is halved and
+%   retried, and the reduced size is kept for the rest of the session (see
+%   FORWARDPOSITIVESCORES). A slow correct answer beats an aborted run.
 %
 %   See also CUTCANDIDATEPATCHES, DETECTDARKLESIONS, FITLESIONOPERATINGPOINT.
 
     arguments
-        workImage (:,:,:) {mustBeNumeric}
+        srcImage (:,:,:) {mustBeNumeric}
         centroids (:,2) double
         C struct
+        % Patches per forward pass. 256 is ~256 MB of peak activation for this
+        % network at 48x48, comfortable on an 8 GB card alongside the model and
+        % whatever else the pipeline is holding.
+        opts.maxBatchItems (1,1) double {mustBePositive} = 256
+        % Maps working-scale centroids into srcImage's pixel grid: 1 when
+        % srcImage IS the working-scale frame, 1/scale when it is full
+        % resolution. See RESOLVEPATCHSOURCE.
+        opts.centroidScale (1,1) double {mustBePositive} = 1
     end
-
-    CHUNK = 1024;
 
     inSz = C.meta.inputSize;
     n = size(centroids, 1);
@@ -52,10 +88,15 @@ function scores = scoreLesionCandidates(workImage, centroids, C)
     useTTA = isfield(C.meta, 'tta') && C.meta.tta;
     nViews = 1; if useTTA, nViews = 8; end
 
-    for b = 1:CHUNK:n
-        sel = (b : min(b+CHUNK-1, n))';
+    % Derive the candidate chunk from the item budget. At least one candidate
+    % per chunk, or a model with more views than the budget would loop forever.
+    candPerChunk = max(1, floor(opts.maxBatchItems / nViews));
+
+    for b = 1:candPerChunk:n
+        sel = (b : min(b+candPerChunk-1, n))';
         m = numel(sel);
-        base = cutCandidatePatches(workImage, centroids, inSz(1), sel);
+
+        base = cutCandidatePatches(srcImage, centroids, inSz(1), sel, opts.centroidScale);
         if ~isequal(size(base, 1, 2), inSz(1:2))
             base = imresize(base, inSz(1:2));
         end
@@ -70,13 +111,83 @@ function scores = scoreLesionCandidates(workImage, centroids, C)
                     patches(:,:,:,(j-1)*nViews+v) = views{v};
                 end
             end
+            clear p views
         else
             patches = base;
         end
+        clear base
 
-        Y = predict(C.trained, dlarray(patches, 'SSCB'));
-        P = double(gather(extractdata(Y)))';
-        scores(sel) = mean(reshape(P(:,2), nViews, m), 1)';
-        clear patches base Y P
+        % Positive-class probability for every patch in this chunk, in order.
+        p2 = forwardPositiveScores(C.trained, patches, opts.maxBatchItems);
+
+        % Average the dihedral views back down to one score per candidate. Done
+        % in double on an 8-element reduction: the arrays that matter for
+        % memory stay single, and the accumulation costs nothing.
+        scores(sel) = mean(reshape(double(p2), nViews, m), 1)';
+
+        clear patches p2
     end
+end
+
+
+% ------------------------------------------------------------------ helpers
+
+function p2 = forwardPositiveScores(net, patches, maxItems)
+%FORWARDPOSITIVESCORES  Run the network over patches, returning class-2 scores.
+%
+%   Splits `patches` into slices of at most `maxItems` along the batch
+%   dimension. On an out-of-memory failure the slice is halved and retried, and
+%   the reduced size persists for the rest of the session so the run does not
+%   spend the next thousand batches rediscovering the same limit.
+%
+%   The persistent floor only ever decreases. It is a memory ceiling discovered
+%   at runtime, not a tuning parameter: results are identical at any slice size
+%   because the network is in inference mode (batch-normalisation uses learned
+%   statistics, so no patch's score depends on what it was batched with).
+
+    persistent sliceCap
+    if isempty(sliceCap), sliceCap = Inf; end
+
+    N = size(patches, 4);
+    p2 = zeros(N, 1, 'single');
+
+    b = 1;
+    while b <= N
+        nb = min([maxItems, sliceCap, N - b + 1]);
+        done = false;
+        while ~done
+            try
+                X = dlarray(patches(:,:,:,b:b+nb-1), 'SSCB');
+                Y = predict(net, X);
+                % Column 2 is the positive class, matching the two-unit
+                % fullyConnectedLayer + softmax the classifier was trained with.
+                Yd = gather(extractdata(Y));
+                p2(b:b+nb-1) = Yd(2, :)';
+                clear X Y Yd
+                done = true;
+            catch ME
+                if nb > 1 && isOutOfMemory(ME)
+                    nb = max(1, floor(nb / 2));
+                    sliceCap = nb;
+                    warning('drishti:candidateBatchReduced', ...
+                        ['GPU out of memory scoring candidate patches; slice ' ...
+                         'reduced to %d patches and kept there for this ' ...
+                         'session. Results are unaffected - batch size does ' ...
+                         'not change an inference-mode forward pass.'], nb);
+                else
+                    rethrow(ME)
+                end
+            end
+        end
+        b = b + nb;
+    end
+end
+
+
+function tf = isOutOfMemory(ME)
+%ISOUTOFMEMORY  Recognise the several ways MATLAB reports exhausted memory.
+    id = lower(ME.identifier);
+    msg = lower(ME.message);
+    tf = contains(id, 'oom') || contains(id, 'nomem') || ...
+         contains(msg, 'out of memory') || contains(msg, 'out of gpu memory');
 end

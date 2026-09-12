@@ -10,9 +10,15 @@ analysis that sizes a district. Everything below is reproducible from
 > is a design target, not a measurement** — no clinician has been timed.
 >
 > **Sensitivity is not one number.** 90.3% is APTOS-internal; the same threshold
-> measured **31.2%** on Messidor-2 uncalibrated, and **90.0%** only after
-> per-site calibration. See §5b — **per-site calibration is a deployment
-> requirement**, not an optimisation.
+> measured **31.2%** on Messidor-2 uncalibrated. Per-site calibration recovers
+> part of that gap — **82.8%** at the one site measured end to end — and does
+> **not** reach the 90% target out of sample. See §5b — **per-site calibration
+> is a deployment requirement**, not an optimisation.
+>
+> ⚠️ **Staffing below was re-sized on 2026-09-13.** It previously used a
+> 90.0% / 57.9% operating point taken from a post-hoc demonstration on
+> Messidor-2 itself. That pair was never independently supported and has been
+> replaced by the IDRiD-measured **82.8% / 76.9%**.
 
 ---
 
@@ -39,13 +45,41 @@ discarded), MATLAB R2026a, **CPU**:
 
 | Configuration | s/image | Note |
 |---|---|---|
-| **Full pipeline** | **7.65** | median; mean 10.15, sd 4.76 |
+| **Full pipeline — MEAN** | **10.56** | **the number Module 5 uses** (n=18) |
+| Full pipeline — median | 7.61 | the *typical* image |
 | — quality gate | 2.59 | |
 | — grading + Grad-CAM + Module 2 | 4.74 | |
+| — report generation | 0.21 | negligible |
 | Grading only (no Module 2, no Grad-CAM) | 3.19 | 2.4× faster |
-| ~~Old placeholder~~ | ~~0.120~~ | **64× understated** |
+| ~~Old placeholder~~ | ~~0.120~~ | **~88× understated** |
 
-An independent earlier run gave 7.76 s — the two agree within ~1.5%.
+### Mean and median differ by 39% — and the mean is the one that matters
+
+The distribution is **right-skewed and near-bimodal**, not noisy:
+
+| | s |
+|---|---|
+| min / p25 | 6.76 / 7.31 |
+| **median** | **7.61** |
+| **mean** | **10.56** |
+| p75 / p90 | 13.59 / 18.94 |
+| max | 25.23 |
+| **images > 12 s** | **33%** |
+
+About two thirds of images run 6.8–8.3 s; about one third run 13–25 s. **The same
+images are slow in every run**, so this is image content, not measurement noise.
+
+**Module 5 uses the MEAN (10.56 s).** A queue's service time is an expectation —
+throughput is total work over time — so the mean is the correct statistic. An
+earlier revision of this document used the median (7.65 s), which under-states the
+compute requirement by ~39%. The median answers "how long does a typical image
+take"; it is the wrong number for sizing a node.
+
+**Cold start is separate again:** the first image of a MATLAB session costs
+~16–25 s (model load, BLAS/JIT warm-up) and is excluded from the statistics above.
+A long-running service pays it once; a per-invocation script pays it every time.
+A short demo run that includes the cold image and a couple of slow ones will
+report an average nearer 14 s — that is expected, and it is not a contradiction.
 
 ### This *is* the CPU number the contract asked for
 
@@ -63,13 +97,13 @@ Measured directly, both devices:
 | Forward + Grad-CAM | 0.514 s | **0.732 s** (GPU *slower*) |
 
 **A PHC edge node does not need a GPU.** The pipeline is CPU-bound in classical
-CV, not in the network: moving the CNN to a GPU would save ~0.016 s out of 7.65 s
+CV, not in the network: moving the CNN to a GPU would save ~0.016 s out of ~10.6 s
 (**0.2%**), and Grad-CAM is actually slower on GPU because transfer overhead
 exceeds compute for a model this small. Edge feasibility therefore rests on
 whether ~7.7 s/image/node is acceptable — not on GPU availability. That resolves
 the open item this document previously carried.
 
-**Why it matters less than it looks.** Even at 7.65 s/image the AI stage needs
+**Why it matters less than it looks.** Even at 10.56 s/image the AI stage needs
 **1 compute node**, not 2 — it was never going to be the bottleneck. But the
 correction is the difference between *knowing* that and *assuming* it.
 
@@ -78,7 +112,7 @@ correction is the difference between *knowing* that and *assuming* it.
 Stated plainly so the claim is never made in the other direction. In this model
 Module 1 is a net **cost** on both stages it touches:
 
-- **AI compute:** 2.59 s of the 7.65 s per image (34%) is the quality gate.
+- **AI compute:** 2.59 s of the 7.61 s median per image (34%) is the quality gate.
 - **Acquisition:** the recapture loop raises technician time from 5.00 to
   **5.23 min/patient** (+4.6%), because a rejected image sends the patient back
   to the camera rather than out of the system.
@@ -139,7 +173,7 @@ every review figure below is an interval.
 > of the assumptions in §6 changes. The load-bearing ones are the 30 s review
 > time (a *design target*, **not measured**), 5.0 min technician time, 5 Mbps
 > uplink, 250 operating days/year and the 85% utilisation ceiling. The only
-> MEASURED inputs are AI service time (7.65 s/image), 2 images/patient and the
+> MEASURED inputs are AI service time (10.56 s/image mean), 2 images/patient and the
 > 10.9% reject rate.
 
 `recommend_district_configuration.m`, at a **85% utilisation ceiling** (ASSUMED
@@ -151,7 +185,7 @@ Target: 100,000 patients/year ÷ 250 days = **400 patients/day**.
 |---|---|---|
 | Cameras (+1 technician each) | **6** | 5.23 min/patient incl. recapture |
 | PHC uplinks | **1** | 0.19 min/patient (2 images, 7.0 MB) |
-| AI compute nodes | **1** | 0.26 min/patient (MEASURED 7.65 s × 2, CPU) |
+| AI compute nodes | **1** | 0.35 min/patient (MEASURED mean 10.56 s × 2, CPU) |
 | Ophthalmologists | **1** | at the site-calibrated operating point (§5) |
 
 **Binding constraint: acquisition (camera + technician)** — it needs 4.36 units
@@ -208,11 +242,12 @@ Specialist minutes/day at 400 patients/day:
 | Pre-AI baseline — read everything | — | 100% | 200 min | 200 min |
 | *Idealised* (referral = prevalence) | 100% / 100% | 4.5–16% | 9.1 min | 32.0 min |
 | **Uncalibrated** site, frozen threshold | **31.2% / 99.5%** | 1.9–5.4% | 3.8 min | 10.8 min |
-| **Site-calibrated** (~200 local images) | **90.0% / 57.9%** | **44–50%** | **88.5 min** | **99.5 min** |
+| **Site-calibrated** (IDRiD, held-back split) | **82.8% / 76.9%** | **26–33%** | **51.6 min** | **65.3 min** |
 
-**The honest number is ~2.0–2.3×, not ~10×.** At the only operating point that is
-both measured and safe, specificity of 57.9% means roughly **half of all screens
-get flagged**, the large majority of them false positives.
+**The honest number is ~3.1–3.9×, not ~6×.** At the safest operating point
+measured, specificity of 76.9% means roughly **a quarter to a third of all
+screens get flagged**, the large majority of them false positives — and it still
+misses ~17% of referable patients, so it does **not** meet the >90% target.
 
 **The uncalibrated row is a trap.** It shows the *lightest* specialist load of any
 AI configuration — 3.8 min/day — precisely because it misses most disease. Light
@@ -238,19 +273,30 @@ Measured on Messidor-2 at the frozen APTOS threshold (`docs/phase3_results.md` �
 | Site-calibrated, 100 images | 87.3% ± 8.4 | 60.9% |
 | **Site-calibrated, ~200 images** | **90.0% ± 4.9** | 57.9% |
 
+⚠️ **The rows above are a post-hoc demonstration on Messidor-2 itself and are
+NOT quotable as deployment performance** — see
+[site_calibration.md](site_calibration.md) §4. The independently-supported
+measurement is IDRiD, fit on TRAIN n=413 and evaluated on held-back TEST n=103:
+
+| | Sensitivity | Specificity |
+|---|---|---|
+| Uncalibrated (APTOS threshold) | 75.0% | 97.4% |
+| **Site-calibrated — used for the staffing above** | **82.8%** | **76.9%** |
+
 ### What this obliges a deployment to do
 
 1. **Collect ~200 locally-labelled images before going live** at each new site or
-   camera model. `fitSiteCalibration.m` fits the local operating point.
+   camera model. `buildSiteCalibration.m` fits, evaluates and saves the local
+   operating point; the pipeline loads it automatically.
 2. **The calibration set and the evaluation set must be disjoint.** Overlap makes
    the result indistinguishable from tuning on test.
 3. **Do not ship the APTOS threshold to a new camera.** At 31.2% sensitivity an
    AI-triage policy would auto-clear ~**44 of the ~64 referable patients/day** a
    district sees — without a human ever seeing them.
 4. **Re-budget specialist time after calibrating.** Calibration buys sensitivity
-   by spending specificity (99.5% → 57.9%), which is what moves specialist load
-   from 3.8 to ~89 min/day. Sizing staff on pre-calibration numbers under-provisions
-   by ~20×.
+   by spending specificity (97.4% → 76.9% as measured on IDRiD), which is what
+   moves specialist load from 3.8 to ~65 min/day. Sizing staff on pre-calibration
+   numbers under-provisions by ~17×.
 
 ### Sensitivity figures must not be conflated
 
@@ -258,7 +304,8 @@ Measured on Messidor-2 at the frozen APTOS threshold (`docs/phase3_results.md` �
 |---|---|---|
 | **90.3% / 95.9%** | APTOS validation split, n=733 | **in-domain only** |
 | **31.2%** | Messidor-2, frozen threshold, uncalibrated | a new, uncalibrated site |
-| **90.0% ± 4.9** | Messidor-2, after ~200-image site calibration | a calibrated site |
+| **82.8%** | IDRiD, fit on TRAIN n=413 → held-back TEST n=103 | a calibrated site (the only end-to-end measurement) |
+| ~~90.0% ± 4.9~~ | Messidor-2 post-hoc demonstration on itself | **nothing — not independently supported** |
 
 Phase 3 states it directly: *"Do not claim 90.3% / 95.9% generalises. It does
 not."* Nothing in Phase 5 treats 90.3% as a universal property of the model, and
@@ -273,11 +320,12 @@ the code carries all three figures separately
 
 | Finding | Basis |
 |---|---|
-| AI service time **7.65 s/image on CPU** | MEASURED, n=10, protocol in §2 |
+| AI service time **10.56 s/image mean on CPU** (median 7.61) | MEASURED, n=18, protocol in §2 |
 | CNN forward 0.050 s CPU / 0.034 s GPU; +Grad-CAM 0.514 / 0.732 s | MEASURED, §2 |
 | **A PHC edge node needs no GPU** (GPU saves 0.2% of pipeline time) | follows from the above |
 | **Acquisition is the binding constraint** | 4.36 units vs 0.16 / 0.21 / 0.26; agrees across two independent methods |
-| Uncalibrated external sensitivity **31.2%**; calibrated **90.0% ± 4.9** at 57.9% spec | MEASURED, `phase3_results.md` §3, §3b |
+| Uncalibrated external sensitivity **31.2%** | MEASURED, `phase3_results.md` §3 |
+| Calibrated **82.8%** at **76.9%** spec, held-back split | MEASURED, `site_calibration.md` §3 |
 | **Per-site calibration is a deployment requirement** | follows from the above (§5b) |
 | 2 images/patient, 10.9% quality reject rate | SOURCED (Dey et al. 2025) |
 | The quality gate **costs** throughput (33% of AI time, +4.6% acquisition) | MEASURED, §2 |
@@ -294,11 +342,27 @@ the code carries all three figures separately
 | Arrival process | Poisson | real PHC demand is bursty (market days, clinic hours), which raises queue peaks without changing mean utilisation |
 | Image size | 3.5 MB | |
 
-**Read-time floor caveat:** the 30 s figure is also what Phase 4's own instrument
-flagged as optimistic — the report's critical path measures ~126 words, a ~38 s
-read-time *floor* at 200 wpm before the clinician looks at the image at all. So
-30 s may understate real review time, which would push §5's specialist-load
-figures *up*, not down.
+### Three review-time numbers, and what each one measures
+
+They appear in different places and look contradictory only if one is quoted for
+another. **None of them is an observed review time — no clinician has been timed.**
+
+| Number | Kind | What it actually measures |
+|---|---|---|
+| **21.6 s** | ASSUMED | `screening_params.meanReviewSeconds` — the per-grade decision times (15/25/30/60/90 s) weighted by the modelled case mix. An assumption about **deciding**, averaged over a cohort that is ~72% grade 0. Used by the stochastic simulator. |
+| **30 s** | ASSUMED | Module 4's flat design target, and the contract value. Used by `recommend_district_configuration` for **every** triage arm, so that only the flagged *fraction* differs between arms. |
+| **~38 s** | **MEASURED** | A **floor on READING** the report's decision-critical text — 126 words at 200 wpm (`usabilityPass`). Excludes looking at the image; excludes judgement entirely. |
+
+**These are not in conflict, and the comparison that matters is this:** the
+measured reading floor (~38 s) is **above both assumed decision times**. Reading
+the report cannot be done in 21.6 s, so 21.6 s cannot be the total time to read
+*and* decide. Both assumptions are therefore **optimistic**, and every
+specialist-load figure in §5 is more likely an under-estimate than an
+over-estimate.
+
+The 21.6 s figure is also lower than the 30 s one purely because it is averaged
+over a mostly-healthy cohort — grade 0 is assumed to take 15 s. It is not a
+"better" estimate, just a differently-weighted one.
 
 ### Still open
 

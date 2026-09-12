@@ -74,12 +74,12 @@ function R = trainCandidateClassifier(opts)
 %
 %   PATCH GEOMETRY
 %   --------------
-%   Training patches come from BUILDCANDIDATEDATASET, which cuts them at the
-%   WORKING scale (FOV normalised to 1536 px) via CUTCANDIDATEPATCHES - the
-%   same geometry DETECTDARKLESIONS scores at. They used to be cut at full
-%   resolution here and at working scale there, roughly a 2x difference on
-%   IDRiD. The saved model records meta.patchGeometry so a model from before
-%   the fix cannot be loaded into the corrected pipeline; retrain instead.
+%   Training patches come from BUILDCANDIDATEDATASET at the geometry named by
+%   'patchGeometry', and the saved model records it as meta.patchGeometry so
+%   DETECTDARKLESIONS cuts inference patches the same way. They used to be cut
+%   at full resolution here and at working scale there, roughly a 2x difference
+%   on IDRiD, with nothing tying the two together. A model from before the
+%   stamp existed is refused rather than guessed at; retrain instead.
 %
 %   See also BUILDCANDIDATEDATASET, CUTCANDIDATEPATCHES, DETECTDARKLESIONS,
 %   EVALUATETWOSTAGEDETECTOR.
@@ -90,6 +90,11 @@ function R = trainCandidateClassifier(opts)
         % Must match the threshSD BUILDCANDIDATEDATASET was run with - candidate
         % directories are versioned by threshold (see its header note on why).
         opts.threshSD (1,1) double = 0.75
+        % Must match the geometry BUILDCANDIDATEDATASET was run with - candidate
+        % directories are versioned by it, and the value is stamped into the
+        % saved model so inference cuts patches the same way.
+        opts.patchGeometry (1,:) char ...
+            {mustBeMember(opts.patchGeometry,{'workingScale','fullRes'})} = 'workingScale'
         % A ceiling, not a target - ValidationPatience below stops training once
         % validation loss stops improving, which on the pooled+loosened dataset
         % (2-3x the original candidate volume) happens well before 20 epochs.
@@ -115,12 +120,16 @@ function R = trainCandidateClassifier(opts)
     files = strings(0,1); labels = false(0,1); imgId = strings(0,1); srcLesion = strings(0,1);
 
     thrTag = strrep(sprintf('%.2f', opts.threshSD), '.', '');
+    geomTag = 'ws';
+    if strcmp(opts.patchGeometry, 'fullRes'), geomTag = 'fr'; end
     for c = channels
-        root = fullfile(cfg.dataRoot, '_cache', sprintf('candidates_%s_t%s', c{1}, thrTag));
+        root = fullfile(cfg.dataRoot, '_cache', ...
+            sprintf('candidates_%s_%s_t%s', c{1}, geomTag, thrTag));
         if ~isfolder(root)
             error('drishti:noCandidates', ...
-                'No candidate dataset at %s. Run buildCandidateDataset(''lesion'',''%s'',''threshSD'',%.2f) first.', ...
-                root, c{1}, opts.threshSD);
+                ['No candidate dataset at %s. Run buildCandidateDataset(''lesion'',''%s'',' ...
+                 '''threshSD'',%.2f,''patchGeometry'',''%s'') first.'], ...
+                root, c{1}, opts.threshSD, opts.patchGeometry);
         end
         posL = dir(fullfile(root, 'pos', '*.png'));
         negL = dir(fullfile(root, 'neg', '*.png'));
@@ -224,7 +233,7 @@ function R = trainCandidateClassifier(opts)
     % corrected pipeline and mismatch the other way. Bump the version if the
     % geometry ever changes again.
     meta = struct('lesion', opts.lesion, 'pooled', {cellstr(opts.pool)}, 'inputSize', inSz, ...
-        'patchGeometry', 'workingScale/v2', ...
+        'patchGeometry', [opts.patchGeometry '/v2'], ...
         'threshSD', opts.threshSD, 'valImages', {cellstr(valImgs)}, 'auc', auc, 'tta', opts.tta, ...
         'hardNegativeRounds', opts.hardNegativeRounds, 'trainedAt', string(datetime('now')), ...
         'note', ['Stage-2 false-positive classifier. Split by IMAGE. Final ' ...

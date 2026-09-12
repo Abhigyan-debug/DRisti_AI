@@ -221,15 +221,31 @@ claim. The 31.2% figure remains the honest headline external result.*
 
 ### Measured on IDRiD (train → test, disjoint by construction)
 
+**This is the independently-supported result — quote this one.**
+
 | | Sensitivity | Specificity |
 |---|---|---|
 | APTOS threshold | 75.0% | 97.4% |
 | Site-calibrated (100 imgs) | 83.7% ± 1.4 | 78.7% |
+| **Site-calibrated (413 imgs, shipped artifact)** | **82.8%** | **76.9%** |
+
+The shipped artifact (`models/site_calibration.mat`, `buildSiteCalibration`,
+2026-09-13) uses the whole 413-image TRAIN pool and reproduces the sweep's n=413
+row exactly. The mean is flat from ~50 images onward, so more calibration data
+buys *reliability*, not a higher mean — the remaining gap to 90% is not a
+data-volume problem.
 
 ### What this establishes
 
-1. **It recovers the failure.** Sensitivity 31.2% → 90.0% on Messidor-2, hitting the
-   clinical target on the dataset where the system had been failing outright.
+1. **It recovers part of the failure — and the Messidor-2 row is NOT the evidence.**
+   The 31.2% → 90.0% figure is a demonstration run on Messidor-2 itself; the set
+   is spent and cannot be re-read to check it, so it is not independent support
+   for a deployment claim. The independently-measured result is the IDRiD one:
+   **75.0% → 82.8% sensitivity, 97.4% → 76.9% specificity**, fit on IDRiD TRAIN
+   (n=413) and evaluated on held-back IDRiD TEST (n=103) by `buildSiteCalibration`
+   on 2026-09-13. **It did not reach the 90% target out of sample** — 90.3% on the
+   calibration sample became 82.8% on images the fit never saw.
+   See [site_calibration.md](site_calibration.md).
 2. **The cost is specificity**: 99.5% → ~58%. For screening that is the correct
    direction — a false positive costs a review, a false negative costs sight — but it
    must be stated, not hidden. It also raises referral volume, which feeds directly
@@ -237,9 +253,12 @@ claim. The 31.2% figure remains the honest headline external result.*
 3. **~200 labelled images per site** is the operational number. Below that the
    threshold is a noisy estimate (±12.7 at 25 images, ±4.9 at 200). More data buys
    *reliability*, not higher mean performance — the mean is flat from 50 onward.
-4. **The benefit scales with how badly transfer fails.** On IDRiD, where the APTOS
-   threshold already gave 75% sensitivity, calibration adds ~9pp. On Messidor-2,
-   where it gave 31%, it adds ~59pp.
+4. **The benefit plausibly scales with how badly transfer fails** — but only the
+   IDRiD half of that statement is evidence. On IDRiD, where the APTOS threshold
+   already gave 75% sensitivity, calibration adds ~9pp on held-back images. The
+   much larger apparent gain on Messidor-2 comes from the post-hoc split of the
+   spent benchmark and is a demonstration, not a measurement. Treat the scaling
+   as a hypothesis that the next site's data can test, not as a result.
 
 ### The deployment claim this supports
 
@@ -247,8 +266,10 @@ claim. The 31.2% figure remains the honest headline external result.*
 > does not, losing 59 points of sensitivity on unseen equipment. Deployment includes
 > a per-site calibration step: roughly 200 labelled images from each new camera,
 > used to fit the operating point, frozen before clinical use, and never reused for
-> evaluation. That recovers 90% sensitivity on the benchmark where the uncalibrated
-> system reached 31%."
+> evaluation. Where we could measure that step end to end on held-back images — on
+> IDRiD — it moved sensitivity from 75.0% to 82.8%, at a cost of 97.4% to 76.9%
+> specificity. It narrows the transfer gap. It does not close it, and we do not
+> claim it reaches our 90% target at a new site."
 
 That is a stronger and more honest deployment story than a single global number, and
 it matches how clinical AI is actually rolled out.
@@ -290,8 +311,10 @@ It closes the argument that began with the Messidor-2 failure:
 1. **Single-domain training fails on unseen cameras** — 90.3% → 31.2% sensitivity.
 2. **Adding a second training domain does not fix it** — helps that domain,
    AUC on a third unseen domain unchanged-to-slightly-worse.
-3. **Per-site calibration does fix it** — ~200 labelled images per site recovers
-   90.0% sensitivity (§3b).
+3. **Per-site calibration helps, but does not fully fix it** — measured end to
+   end on IDRiD (fit TRAIN n=413 → held-back TEST n=103) it recovers
+   **75.0% → 82.8%** sensitivity for **97.4% → 76.9%** specificity, and does
+   **not** reach the 90% target out of sample ([site_calibration.md](site_calibration.md)).
 
 So per-site calibration is not a workaround adopted for convenience; it is the
 option left standing after the alternative was built and measured. That is a
@@ -394,12 +417,36 @@ The haemorrhage channel shared MA's pipeline and was still being displayed while
 MA had been pulled — measured and unmeasured channels held to different bars.
 Closed by applying per-lesion recall/precision uniformly (IDRiD, n=12):
 
+> ### ⚠️ SUPERSEDED 2026-09-12 — see [phase2_results.md](phase2_results.md)
+>
+> Every lesion number in this section was measured on the **IDRiD training
+> split**, macro-averaged, small n, and **before the stage-2 classifiers were
+> connected to the production path**. They are kept as the record of what was
+> known at the time; do not quote them.
+>
+> Current figures — IDRiD **test** split, n=27, micro-averaged, per-lesion,
+> against a bar frozen before measurement. Dark channels re-measured 2026-09-13
+> after the rebuild; both now fail on **precision only**:
+>
+> | Channel | Precision | Recall | F1 | Displayed? |
+> |---|---|---|---|---|
+> | Microaneurysms | 0.028 | 0.409 | 0.053 | ❌ |
+> | Haemorrhages | 0.164 | 0.311 | 0.215 | ❌ |
+> | **Hard exudates** | **0.817** | **0.133** | **0.229** | ✅ |
+> | Soft exudates | 0.038 | 0.026 | 0.031 | ❌ |
+>
+> **Soft exudates are no longer "never measured".** They were measured and they
+> failed: 4 detections across 27 images at the old boundary, none correct. The
+> hard/soft boundary has since been fitted on train, and the finding is that soft
+> exudate precision peaks at 0.107 across the *entire* boundary range — a
+> detector-level failure, not a threshold choice.
+
 | Channel | Recall | Precision | Count ratio | Displayed? |
 |---|---|---|---|---|
 | Microaneurysms | 0.089 | 0.021 | 3.6× | ❌ |
 | Haemorrhages | 0.040 | **0.034** | **1.9×** | ❌ |
 | **Hard exudates** | ~~0.254~~ **0.146** | ~~0.595~~ **0.549** | **0.3×** | ✅ (corrected — see §3e.1) |
-| Soft exudates | — | never measured | — | ❌ |
+| Soft exudates | — | never measured *(measured 2026-09-12: failed)* | — | ❌ |
 
 **Haemorrhage is worse than microaneurysm** — it finds 4% of real haemorrhages,
 and 97% of what it reports is false. Its 1.9× count ratio is the trap in its
@@ -413,9 +460,11 @@ load-bearing detector is the one that works. **The recall/precision pair above
 was corrected this session — the previously-quoted 0.254/0.595 does not
 reproduce; see §3e.1 for what happened and why the shipped threshold changed.**
 
-Soft exudates are suppressed on a different ground — never measured. *Unmeasured*
-is not the same as *unreliable*, but it is equally unfit to display, and the rule
-only means something if it applies uniformly.
+Soft exudates were suppressed at the time on a different ground — never measured.
+*Unmeasured* is not the same as *unreliable*, but it is equally unfit to display,
+and the rule only means something if it applies uniformly. **As of 2026-09-12 they
+are measured, and they fail on their own merits** (precision 0.038): the channel is
+now suppressed for the same reason as the others rather than for want of a test.
 
 ### The architectural lesson
 
@@ -525,6 +574,31 @@ images, both channels using threshSD 1.5 candidates and the shipped classifiers)
 | Microaneurysms | **+ classifier (threshold 0.5)** | 0.135 | **0.054** | 2.6× |
 | Haemorrhages | stage 1 alone | 0.284 | 0.062 | 6.7× |
 | Haemorrhages | **+ classifier (threshold 0.7)** | 0.054 | **0.088** | 0.6× |
+
+> **Update 2026-09-12.** These classifiers were trained and measured here but were
+> **never wired into the production path** — `extractLesionFeatures` called
+> `detectDarkLesions` with no classifier at all, so every shipped report ran stage 1
+> alone. That is why 0.054 (this table) and 0.028 (what actually shipped) coexisted.
+> They were then connected, and on the held-out test split the microaneurysm channel
+> appeared to improve (0.028 → 0.046) while the **haemorrhage classifier made things
+> worse** (F1 0.138 → 0.077). That decision was left open, to be made on the train
+> split. See [phase2_results.md](phase2_results.md) §3a and §4.
+>
+> **Update 2026-09-13 — the table above is SUPERSEDED; do not quote it.** Both
+> classifiers here were trained under the old patch geometry: training patches were
+> cut at full resolution while inference cut them at working scale, so their scores
+> came from a train/serve mismatch. `loadCandidateClassifiers` now **refuses** any
+> model without a matching `meta.patchGeometry` stamp, and both were retrained.
+>
+> The open decision is **closed, on the TRAIN split, by the pre-registered rule in
+> `fitLesionOperatingPoint`: stage 1 alone won on *both* channels.** The shipped
+> detector applies no stage-2 classifier to either — `applyClassifier = false` in
+> `config/lesion_operating_points.json`. The MA "improvement" to 0.046 did not
+> survive the geometry fix: re-measured held-out precision is **0.028** with recall
+> **0.409**, and haemorrhages are **0.164 / 0.311**. A 2x2 ablation additionally
+> refuted patch resolution as the explanation for the stage-2 collapse.
+> Current numbers: [phase2_results.md](phase2_results.md) §2 and §2a; freeze and
+> ablation: [train_operating_points_frozen.md](train_operating_points_frozen.md).
 
 Both channels improve over their own single-stage baseline (MA ~1.9×, haemorrhage
 ~1.4×) and both remain **an order of magnitude below the 0.5 display bar** —

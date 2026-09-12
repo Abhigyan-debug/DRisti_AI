@@ -9,6 +9,7 @@ function R = rebuildDarkLesionDetectors(opts)
 %       3. train stage-2 classifiers         -> both channels, pooled
 %       4. fit the stage-2 operating point   -> TRAIN split, writes the config
 %       5. print the held-out command        -> you run it, deliberately, once
+%       6. save the whole run, sweep included -> results/dark_lesion_rebuild.mat
 %
 %   R = REBUILDDARKLESIONDETECTORS(limit=6, skipTraining=true)   % smoke run
 %
@@ -60,6 +61,11 @@ function R = rebuildDarkLesionDetectors(opts)
         opts.threshSD (1,1) double = NaN     % skip the sweep, force this value
         opts.recallCeilingTarget (1,1) double = 0.25
         opts.fragmentRejection (1,1) logical = true
+        % Which geometry to build and train at. Decide it with
+        % ABLATECANDIDATEPATCHGEOMETRY, then rebuild with the winner - do not
+        % pick it from a held-out number.
+        opts.patchGeometry (1,:) char ...
+            {mustBeMember(opts.patchGeometry,{'workingScale','fullRes'})} = 'workingScale'
         opts.patchPx (1,1) double = 48
         opts.limit (1,1) double = Inf
         opts.skipTraining (1,1) logical = false
@@ -67,11 +73,13 @@ function R = rebuildDarkLesionDetectors(opts)
         opts.verbose (1,1) logical = true
     end
 
+    cfg = drishti_paths();
     channels = {'microaneurysms', 'haemorrhages'};
     R = struct();
     R.startedAt = char(datetime('now', 'Format', 'yyyy-MM-dd HH:mm'));
     R.recallCeilingTarget = opts.recallCeilingTarget;
     R.fragmentRejection = opts.fragmentRejection;
+    R.patchGeometry = opts.patchGeometry;
     tAll = tic;
 
     % ---- 1. generator recall ceiling -------------------------------------
@@ -99,6 +107,7 @@ function R = rebuildDarkLesionDetectors(opts)
     for ci = 1:numel(channels)
         R.datasets.(channels{ci}) = buildCandidateDataset( ...
             'lesion', channels{ci}, 'threshSD', threshSD, 'patchPx', opts.patchPx, ...
+            'patchGeometry', opts.patchGeometry, ...
             'fragmentRejection', opts.fragmentRejection, 'limit', opts.limit, ...
             'verbose', opts.verbose);
     end
@@ -118,7 +127,7 @@ function R = rebuildDarkLesionDetectors(opts)
             % The model is still saved and evaluated per channel.
             R.training.(channels{ci}) = trainCandidateClassifier( ...
                 'lesion', channels{ci}, 'pool', other, 'threshSD', threshSD, ...
-                'inputPx', opts.patchPx);
+                'patchGeometry', opts.patchGeometry, 'inputPx', opts.patchPx);
         end
     end
 
@@ -145,8 +154,21 @@ function R = rebuildDarkLesionDetectors(opts)
     end
 
     R.elapsedMinutes = toc(tAll) / 60;
+
+    % ---- 6. persist the run ------------------------------------------------
+    % The generator-recall sweep in R.sweep is the ONLY record of why this
+    % threshSD was chosen, and the run costs ~100 min. Returning it to a
+    % variable that dies with the MATLAB process leaves the provenance of a
+    % committed operating point in console scrollback - which is how the
+    % haemorrhage recall ceilings from the 2026-09-12 rebuild were lost.
+    % Save it beside every other measured artefact.
+    R.savedTo = fullfile(cfg.resultsDir, 'dark_lesion_rebuild.mat');
+    if ~isfolder(cfg.resultsDir), mkdir(cfg.resultsDir); end
+    save(R.savedTo, 'R');
+
     if opts.verbose
-        fprintf('\n  total %.1f min\n\n', R.elapsedMinutes);
+        fprintf('\n  saved -> %s\n', R.savedTo);
+        fprintf('  total %.1f min\n\n', R.elapsedMinutes);
     end
 end
 

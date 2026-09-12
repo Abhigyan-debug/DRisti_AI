@@ -62,6 +62,20 @@ function R = fitLesionOperatingPoint(opts)
         opts.thresholds (1,:) double = [-Inf 0.5 0.7 0.8 0.9 0.95 0.98 0.995]
         opts.fragmentRejection (1,1) logical = true
         opts.limit (1,1) double = Inf
+        % Where to load the stage-2 classifiers from. Empty = the LIVE models in
+        % models/. Otherwise either
+        %     a directory   -> <dir>/candidate_classifier_<channel>.mat
+        %     a %s template -> sprintf(template, channel)
+        % e.g. 'models/ablation/candidate_classifier_%s_workingScale_t150.mat'
+        %
+        % Setting this FORCES write=false. An operating point fitted from a
+        % candidate model must never land in the live config by accident - that
+        % config is the frozen record of what ships, and a half-explored
+        % ablation overwriting it is exactly the kind of silent contamination
+        % the freeze exists to prevent. Use `outFile` to keep the result.
+        opts.modelPath (1,:) char = ''
+        % Where to save the fitted result as a .mat. Empty = do not save.
+        opts.outFile (1,:) char = ''
         opts.write (1,1) logical = true
         opts.verbose (1,1) logical = true
     end
@@ -76,6 +90,17 @@ function R = fitLesionOperatingPoint(opts)
     end
     J = jsondecode(fileread(opFile));
     rule = J.selection_rule;
+
+    % A model loaded from anywhere but models/ is a candidate, not the shipped
+    % detector, so its operating point is a measurement - never a decision. The
+    % live config stays untouched no matter what `write` says.
+    usingAltModels = ~isempty(opts.modelPath);
+    if usingAltModels && opts.write
+        opts.write = false;
+        fprintf(['\n  NOTE: modelPath is set, so config/lesion_operating_points.json\n' ...
+                 '        will NOT be written. These are candidate models; the live\n' ...
+                 '        config records what ships. Use outFile to keep the result.\n']);
+    end
 
     if strcmp(opts.lesion, 'both')
         channels = {'microaneurysms', 'haemorrhages'};
@@ -96,7 +121,22 @@ function R = fitLesionOperatingPoint(opts)
         R.channels.(ch) = sweepChannel(cfg, ch, opts, rule);
     end
 
+    R.modelPath = opts.modelPath;
+    R.usingAltModels = usingAltModels;
+    R.liveConfigWritten = opts.write;
+
     if opts.verbose, printReport(R, channels); end
+
+    if ~isempty(opts.outFile)
+        % Same anchoring as modelPath: a relative outFile must land in the
+        % project, not wherever run() left the working directory.
+        opts.outFile = resolveAgainstRoot(cfg, opts.outFile);
+        outDir = fileparts(opts.outFile);
+        if ~isempty(outDir) && ~isfolder(outDir), mkdir(outDir); end
+        save(opts.outFile, 'R');
+        R.savedResultTo = opts.outFile;
+        if opts.verbose, fprintf('  result saved -> %s\n', opts.outFile); end
+    end
 
     if opts.write
         for ci = 1:numel(channels)
@@ -130,6 +170,56 @@ end
 
 % ------------------------------------------------------------------ helpers
 
+function cf = resolveModelPath(cfg, ch, modelPath)
+%RESOLVEMODELPATH  Which classifier file this channel should be scored with.
+%
+%   Empty modelPath   -> the live model, models/candidate_classifier_<ch>.mat
+%   A directory       -> <dir>/candidate_classifier_<ch>.mat
+%   A '%s' template   -> sprintf(template, ch)
+%
+%   The template form is what the ablation needs, because its files carry the
+%   geometry and threshold in the name and there is no single directory in
+%   which "the microaneurysm model" is unambiguous.
+
+    if isempty(modelPath)
+        cf = fullfile(cfg.modelsDir, ['candidate_classifier_' ch '.mat']);
+        return
+    end
+
+    % A RELATIVE path is resolved against the PROJECT ROOT, never against the
+    % process working directory. MATLAB's run() changes the working directory to
+    % the folder holding the script - measured: a -batch job started in the
+    % project root reports pwd = C:\...\Temp once inside run('C:\...\Temp\x.m').
+    % So 'models/ablation/...' silently became "file not found" for a file that
+    % was plainly there. Anchoring to the project root makes the option behave
+    % the same however the caller was invoked.
+    if contains(modelPath, '%s')
+        cf = sprintf(modelPath, ch);
+    else
+        base = resolveAgainstRoot(cfg, modelPath);
+        if ~isfolder(base)
+            error('drishti:badModelPath', ...
+                ['modelPath ''%s'' is neither a folder nor a template containing ' ...
+                 '%%s. Pass a directory, or a pattern such as ' ...
+                 '''models/ablation/candidate_classifier_%%s_workingScale_t150.mat''.'], ...
+                modelPath);
+        end
+        cf = fullfile(base, ['candidate_classifier_' ch '.mat']);
+    end
+    cf = resolveAgainstRoot(cfg, cf);
+end
+
+
+function p = resolveAgainstRoot(cfg, p)
+%RESOLVEAGAINSTROOT  Make a relative path absolute against the project root.
+    if isempty(p), return; end
+    absolute = ~isempty(regexp(p, '^([A-Za-z]:[\\/]|[\\/]{2}|[\\/])', 'once'));
+    if ~absolute
+        p = fullfile(cfg.projectRoot, p);
+    end
+end
+
+
 function S = sweepChannel(cfg, ch, opts, rule)
 %SWEEPCHANNEL  Pooled precision/recall at every threshold for one channel.
 
@@ -138,7 +228,7 @@ function S = sweepChannel(cfg, ch, opts, rule)
         case 'haemorrhages',   sub = '2. Haemorrhages';   suf = '_HE.tif';
     end
 
-    cf = fullfile(cfg.modelsDir, ['candidate_classifier_' ch '.mat']);
+    cf = resolveModelPath(cfg, ch, opts.modelPath);
     if ~isfile(cf)
         error('drishti:noClassifier', ...
             ['No stage-2 classifier at %s. Build the candidates and train it ' ...
@@ -199,7 +289,10 @@ function S = sweepChannel(cfg, ch, opts, rule)
             continue
         end
 
-        scores = scoreLesionCandidates(cd.workImage, centroids, C);
+        % Cut patches the way THIS model was trained, not the way this file
+        % happens to have an image handy - see RESOLVEPATCHSOURCE.
+        [srcImg, cScale] = resolvePatchSource(C, img, cd.workImage, cd.scale);
+        scores = scoreLesionCandidates(srcImg, centroids, C, 'centroidScale', cScale);
         ccW = bwconncomp(cd.(ch).mask, 8);
         fullSize = [size(img,1) size(img,2)];
 

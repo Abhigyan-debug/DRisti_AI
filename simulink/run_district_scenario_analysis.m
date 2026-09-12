@@ -113,13 +113,16 @@ function report = run_district_scenario_analysis(savePlots)
         rec.assumptions.imagesPerPatient, rec.assumptions.aiMinutesPerPatient*60);
     fprintf('    Ophthalmologists      : %d   (site-CALIBRATED operating point)\n', ...
         max(og.calibrated.count, od.calibrated.count));
-    fprintf('      specialist load %.0f-%.0f min/day at the only SAFE operating point\n', ...
+    fprintf('      specialist load %.0f-%.0f min/day at the safest MEASURED point,\n', ...
         og.calibrated.minPerDay, od.calibrated.minPerDay);
-    fprintf('      (90.0%%/57.9%%, per-site calibrated), vs %.0f min/day reading every\n', ...
-        og.preAiBaselineMinPerDay);
-    fprintf('      image: a %.1f-%.1fx reduction. NOT the ~10x that an idealised\n', ...
+    fprintf('      vs %.0f min/day reading every image: a %.1f-%.1fx reduction,\n', ...
+        og.preAiBaselineMinPerDay, ...
         od.calibrated.reductionVsBaseline, og.calibrated.reductionVsBaseline);
-    fprintf('      classifier (referral = prevalence) would imply.\n');
+    fprintf('      NOT the %.0fx an idealised classifier (referral = prevalence) implies.\n', ...
+        od.idealised.reductionVsBaseline);
+    fprintf('      Operating point 82.8%%/76.9%%: site-calibrated on IDRiD TRAIN n=413,\n');
+    fprintf('      evaluated on held-back IDRiD TEST n=103. NOT a Messidor-2 result.\n');
+    fprintf('      It misses 17%% of referable patients - below the >90%% target.\n');
     fprintf('    BINDING CONSTRAINT    : %s\n', rec.bindingConstraint);
     fprintf('\n  Same-day TAT (baseline run): median %.1f min, p95 %.1f min, SLA<2h %.1f%%\n', ...
         resBaseline.medianTAT, resBaseline.p95TAT, resBaseline.slaWithin2HoursPct);
@@ -131,6 +134,15 @@ function report = run_district_scenario_analysis(savePlots)
     fprintf('  ALL THROUGHPUT FIGURES ABOVE ARE ASSUMPTION-DEPENDENT (30 s review\n');
     fprintf('  time is a design target, not a measurement). See docs/phase5_results.md.\n');
     fprintf('=================================================================\n\n');
+
+    % savePlots was accepted and documented but never used - the flag did
+    % nothing. It now generates the deck figures from measured results.
+    if savePlots
+        fprintf('\n  Generating dashboard figures...\n');
+        make_dashboard_figures();
+        report.figures = true;
+    end
+
 end
 
 % -------------------------------------------------------------------------

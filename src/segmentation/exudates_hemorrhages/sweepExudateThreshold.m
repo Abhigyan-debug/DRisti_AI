@@ -41,7 +41,7 @@ function R = sweepExudateThreshold(opts)
 
         WORK_FOV_PX = 1024;
         scale = min(1, WORK_FOV_PX / fov.diameter);
-        small = imresize(im2double(img), scale, 'bilinear');
+        small = resizeToDouble(img, scale);
         mask = imresize(fov.mask, scale, 'nearest');
         if size(small,3) ~= 3, small = repmat(small,1,1,3); end
         discR = disc.radius * scale;

@@ -34,13 +34,20 @@ function out = runDrishtiPipeline(imagePath, opts)
 %
 %   ⚠️ OPERATING POINT. The threshold is read from the frozen validation file.
 %   Measured external validation shows it does NOT transfer across cameras
-%   (90.3% sensitivity internally, 31.2% on Messidor-2). For a new site, fit a
-%   local operating point with FITSITECALIBRATION on ~200 labelled local images
-%   and pass it in via opts.siteCalibration. Running a new camera on the
-%   shipped threshold is a known failure mode, not an untested risk.
+%   (90.3% sensitivity internally, 31.2% on Messidor-2). Running a new camera
+%   on the shipped threshold is a known failure mode, not an untested risk.
+%
+%   The operating point is resolved in this order:
+%     1. opts.siteCalibration, if a caller passed one
+%     2. this machine's saved artifact, via LOADSITECALIBRATION
+%     3. the shipped APTOS threshold - UNCALIBRATED, and said so loudly
+%
+%   Build (2) for a new camera with BUILDSITECALIBRATION. An absent artifact
+%   is not an error: it leaves the system in the uncalibrated state, which is
+%   the honest default and is announced in every report.
 %
 %   See also PROCESSIMAGE, EXTRACTLESIONFEATURES, EXPLAINGRADING,
-%   FITSITECALIBRATION.
+%   BUILDSITECALIBRATION, LOADSITECALIBRATION, FITSITECALIBRATION.
 
     arguments
         imagePath
@@ -108,12 +115,23 @@ function out = runDrishtiPipeline(imagePath, opts)
 
     % ---- operating point --------------------------------------------------
     rawScore = E.referableScore;
+
+    % A caller-supplied calibration wins; otherwise fall back to this
+    % machine's saved artifact, so a calibrated site stays calibrated even
+    % when a caller forgets to pass it. Absent artifact -> empty struct ->
+    % the uncalibrated branch below, which is the loud default.
+    if ~isfield(opts.siteCalibration, 'a')
+        opts.siteCalibration = loadSiteCalibration('verbose', opts.verbose);
+    end
+
     if isfield(opts.siteCalibration, 'a')
         S = opts.siteCalibration;
         out.referableProb = 1 ./ (1 + exp(-(S.a * rawScore + S.b)));
         refer = rawScore >= S.thresholdRaw;
-        out.confidence = sprintf('site-calibrated on %d local images', S.n);
+        out.confidence = sprintf('site-calibrated on %d local images (%s)', ...
+            S.n, siteOf(S));
         out.operatingPoint = 'site';
+        out.siteCalibration = S;
     else
         calFile = fullfile(cfg.modelsDir, 'calibrator.mat');
         if isfile(calFile)
@@ -147,6 +165,15 @@ end
 
 
 % ------------------------------------------------------------------ helpers
+
+function s = siteOf(C)
+%SITEOF  The camera an operating point was fitted for, or an honest blank.
+    s = 'site not recorded';
+    if isstruct(C) && isfield(C, 'meta') && isfield(C.meta, 'site')
+        s = char(C.meta.site);
+    end
+end
+
 
 function out = emitReport(out, opts, cfg, img)
 %EMITREPORT  Write the HTML report, with a PNG fallback.

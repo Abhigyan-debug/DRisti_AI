@@ -35,7 +35,7 @@ function S = runDrishtiSystem(source, opts)
 %   ⚠️ NEVER POINT THIS AT MESSIDOR-2. It is the held-out external benchmark and
 %   was spent once, on 2026-09-12. See project rule 1.
 %
-%   See also RUNDRISHTIPIPELINE, FITSITECALIBRATION,
+%   See also RUNDRISHTIPIPELINE, FITSITECALIBRATION, ASSERTNOTHOLDOUT,
 %   RECOMMEND_DISTRICT_CONFIGURATION, ANALYSEFAILURECASES.
 
     arguments
@@ -59,13 +59,24 @@ function S = runDrishtiSystem(source, opts)
     else
         files = string(source);
     end
-    guardHoldout(files);
+    assertNotHoldout(files);
     n = min(numel(files), opts.limit);
     if n == 0
         error('drishti:noImages', 'No images found at %s', string(source));
     end
 
+    % A calibration passed by the caller wins; otherwise use this machine's
+    % saved artifact if it has one. Resolved HERE, once, so the cohort summary
+    % and the warning below describe the operating point the images actually
+    % ran at rather than only what was passed in.
+    if ~isfield(opts.siteCalibration, 'a')
+        opts.siteCalibration = loadSiteCalibration('verbose', opts.verbose);
+    end
+
     calibrated = isfield(opts.siteCalibration, 'a');
+    if calibrated && opts.verbose
+        fprintf('  Site calibration: %s\n', siteLabel(opts.siteCalibration));
+    end
     if ~calibrated && opts.verbose
         warning('drishti:uncalibratedSite', ...
             ['Running on the FROZEN APTOS operating point with no site ' ...
@@ -107,7 +118,10 @@ function S = runDrishtiSystem(source, opts)
     S.referRate      = S.nRefer / n;
     S.recaptureRate  = S.nRecapture / n;
     S.calibrated     = calibrated;
-    S.operatingPoint = ternary(calibrated, 'site-calibrated', 'frozen APTOS (UNCALIBRATED)');
+    S.operatingPoint = ternary(calibrated, ...
+        ['site-calibrated - ' siteLabel(opts.siteCalibration)], ...
+        'frozen APTOS (UNCALIBRATED)');
+    S.siteCalibration = calibrationSummary(opts.siteCalibration);
 
     % ---- module 5, driven by what we just measured ------------------------
     S.measuredSecondsPerImage = median(perImageSec, 'omitnan');
@@ -118,26 +132,6 @@ end
 
 
 % ------------------------------------------------------------------ helpers
-
-function guardHoldout(files)
-%GUARDHOLDOUT  Refuse to screen the held-out external benchmark.
-%
-%   Project rule 1 makes Messidor-2 a one-shot, and it was spent on
-%   2026-09-12. A convenience entry point that will happily batch-run over any
-%   folder is exactly how a holdout gets touched a second time by accident, so
-%   the check lives in the code rather than in a reader's memory.
-
-    hit = contains(lower(files), 'messidor');
-    if any(hit)
-        error('drishti:holdoutProtected', ...
-            ['Refusing to run: %d of these paths look like Messidor-2, which ' ...
-             'is the HELD-OUT external benchmark and was already spent once ' ...
-             '(2026-09-12, results/messidor2_external_validation.mat). See ' ...
-             'project rule 1. To analyse that run, use analyseFailureCases, ' ...
-             'which reads the saved result and performs no inference.'], nnz(hit));
-    end
-end
-
 
 function D = districtCapacity(secPerImage)
 %DISTRICTCAPACITY  Module 5, using the service time just measured.
@@ -163,7 +157,20 @@ function printSummary(S)
     fprintf('  operating point   %s\n', S.operatingPoint);
     if ~S.calibrated
         fprintf('    ⚠ UNCALIBRATED: 31.2%% measured external sensitivity.\n');
-        fprintf('      Not fit for clinical use until fitSiteCalibration is run.\n');
+        fprintf('      Not fit for clinical use until buildSiteCalibration is run.\n');
+    elseif isfield(S.siteCalibration, 'heldBackSensitivity')
+        % Sensitivity and specificity together, always. The uncalibrated pair
+        % is printed beside them so the TRADE is visible rather than just the
+        % half of it that improved.
+        c = S.siteCalibration;
+        fprintf('    fitted on      %s\n', c.calibrationSet);
+        fprintf('    held-back set  %s\n', c.heldBackSet);
+        fprintf('      uncalibrated    sens %5.1f%%  spec %5.1f%%\n', ...
+            100*c.heldBackUncalibratedSensitivity, ...
+            100*c.heldBackUncalibratedSpecificity);
+        fprintf('      calibrated      sens %5.1f%%  spec %5.1f%%\n', ...
+            100*c.heldBackSensitivity, 100*c.heldBackSpecificity);
+        fprintf('    (measured on that site. NOT a Messidor-2 result.)\n');
     end
     fprintf('  refer             %d (%.1f%%)\n', S.nRefer, 100*S.referRate);
     fprintf('  no-refer          %d\n', S.nNoRefer);
@@ -187,4 +194,43 @@ end
 
 function o = ternary(c, a, b)
     if c, o = a; else, o = b; end
+end
+
+
+function s = siteLabel(C)
+%SITELABEL  Which camera this operating point was fitted for.
+    s = 'site not recorded';
+    if isstruct(C) && isfield(C, 'meta') && isfield(C.meta, 'site')
+        s = char(C.meta.site);
+    end
+end
+
+
+function M = calibrationSummary(C)
+%CALIBRATIONSUMMARY  Provenance of the operating point, for the cohort record.
+%
+%   Sensitivity is never carried without the specificity it cost, so a caller
+%   cannot read one out of this struct and quote it on its own.
+
+    M = struct('loaded', false);
+    if ~isstruct(C) || ~isfield(C, 'a'), return; end
+
+    M.loaded = true;
+    M.site = siteLabel(C);
+    M.thresholdRaw = C.thresholdRaw;
+    M.nCalibrationImages = C.n;
+    if isfield(C, 'meta')
+        if isfield(C.meta, 'fittedAt'),       M.fittedAt = C.meta.fittedAt; end
+        if isfield(C.meta, 'graderModel'),    M.graderModel = C.meta.graderModel; end
+        if isfield(C.meta, 'calibrationSet'), M.calibrationSet = C.meta.calibrationSet; end
+        if isfield(C.meta, 'evaluationSet'),  M.evaluationSet = C.meta.evaluationSet; end
+    end
+    if isfield(C, 'evaluation')
+        E = C.evaluation;
+        M.heldBackSet = E.dataset;
+        M.heldBackSensitivity = E.calibratedSensitivity;
+        M.heldBackSpecificity = E.calibratedSpecificity;
+        M.heldBackUncalibratedSensitivity = E.uncalibratedSensitivity;
+        M.heldBackUncalibratedSpecificity = E.uncalibratedSpecificity;
+    end
 end

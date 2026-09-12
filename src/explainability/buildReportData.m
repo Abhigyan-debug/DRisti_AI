@@ -100,6 +100,8 @@ function reportData = buildReportData(result, opts)
     L.hemorrhageCount    = withheld(F, 'haemorrhages',   'count');
     L.softExudateCount   = withheld(F, 'softExudates',   'count');
 
+    % Hard exudates remain special-cased for the DME endpoint (area near the
+    % fovea), but the gate is the measured flag, not the channel's name.
     if isfield(F,'hardExudates') && isfield(F.hardExudates,'reliable') && F.hardExudates.reliable
         % Area in DD^2 converted to a percentage of a nominal 45-degree field.
         % Expressed as an area fraction rather than a raw count because the
@@ -111,6 +113,15 @@ function reportData = buildReportData(result, opts)
         L.hardExudateAreaPct = NaN;
         L.hardExudateInMacula = false;
     end
+
+    % ---- validated lesions: what passed, and where it is ------------------
+    % Item 5 of the reporting contract. A location list asserts more than a
+    % count does - it says "there, look" - so it is emitted ONLY for channels
+    % that cleared the frozen bar in config/lesion_validation_thresholds.json.
+    % Item 6 is the same rule seen from the other side: everything that failed
+    % or was never measured is listed as not validated, with its numbers, and
+    % never as a zero.
+    [reportData.detectorValidation, reportData.lesionLocations] = validationBlocks(F);
 
     L.neovascularization = false;
     if isfield(F,'neovascularization')
@@ -189,10 +200,10 @@ function reportData = buildReportData(result, opts)
             reportData.followUpInterval  = 'Same visit';
         case 'refer'
             reportData.recommendedAction = 'Refer to ophthalmologist';
-            reportData.followUpInterval  = 'Within 4 weeks';
+            reportData.followUpInterval  = 'Within 4 weeks (project protocol)';
         otherwise
             reportData.recommendedAction = 'Routine rescreening';
-            reportData.followUpInterval  = '12 months';
+            reportData.followUpInterval  = '12 months (project protocol)';
     end
     % Name the model that actually produced this grade. The template footer read
     % "DRishti-AI v1.0 (Ensemble + ResNet)"; the pipeline loads a single
@@ -236,4 +247,50 @@ function v = withheld(F, channel, field)
     if isfield(c, 'reliable') && c.reliable && isfield(c, field)
         v = c.(field);
     end
+end
+
+
+function [rows, locs] = validationBlocks(F)
+%VALIDATIONBLOCKS  Per-channel validation table, and locations for the passers.
+%
+%   rows: {channel, precision, recall, F1, verdict} for ALL four channels, so a
+%   reader can see what was measured and what was rejected. Hiding the failures
+%   would make the one surviving channel look like the whole story.
+%
+%   locs: {channel, quadrant, distance-to-fovea DD, area DD^2, centroid px} for
+%   validated channels only.
+
+    names  = {'microaneurysms', 'haemorrhages', 'hardExudates', 'softExudates'};
+    labels = {'Microaneurysms', 'Haemorrhages', 'Hard exudates', 'Soft exudates'};
+
+    rows = {};
+    locs = {};
+    for k = 1:numel(names)
+        c = names{k};
+        if ~isfield(F, c), continue; end
+        e = F.(c);
+
+        p = getNum(e, 'measuredPrecision');
+        r = getNum(e, 'measuredRecall');
+        f1 = getNum(e, 'measuredF1');
+        verdict = 'not validated';
+        if isfield(e, 'validationVerdict') && ~isempty(e.validationVerdict)
+            verdict = char(e.validationVerdict);
+        end
+        rows(end+1, :) = {labels{k}, p, r, f1, verdict}; %#ok<AGROW>
+
+        if ~(isfield(e, 'reliable') && e.reliable), continue; end
+        if ~isfield(e, 'locations'), continue; end
+        for i = 1:numel(e.locations)
+            L = e.locations(i);
+            locs(end+1, :) = { labels{k}, L.quadrant, ...
+                L.distanceToFoveaDD, L.areaDD2, L.centroidPx }; %#ok<AGROW>
+        end
+    end
+end
+
+
+function v = getNum(s, f)
+    v = NaN;
+    if isfield(s, f), v = s.(f); end
 end

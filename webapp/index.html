@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DRishti-AI — retinal screening</title>
+<style>
+  /* ---------------------------------------------------------------------
+     Starry Night. Deep navy ground, lime accent, periwinkle mid-tones.
+
+     One rule governs the palette here: LIME IS BRAND, NEVER A CLINICAL STATE.
+     It is the most attention-grabbing colour on the page and it reads as
+     "go / all clear" - so it marks the primary action and the app's identity,
+     and never a screening outcome. Referable / not-referable / ungradable keep
+     distinct red / green / amber hues, brightened for a dark ground, so the
+     result is never inferred from the accent colour alone.
+     --------------------------------------------------------------------- */
+  :root{
+    --bg:#0E1B33;         /* page */
+    --bg-2:#132340;       /* inset wells */
+    --card:#1B2C4E;       /* panels */
+    --card-hd:#162644;    /* panel header strip */
+    --line:#2C4370;       /* borders */
+    --ink:#EAF0FB;        /* primary text */
+    --dim:#94A8CE;        /* muted text */
+    --lime:#C6F024;       /* brand + primary action */
+    --lime-ink:#0E1B33;   /* text ON lime */
+    --peri:#8FA5D5;       /* periwinkle */
+    --blue:#4E6FBF;       /* mid blue */
+    --red:#DB2741; --amber:#9B6816; --green:#258155;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;color:var(--ink);
+       background:var(--bg);
+       background-image:
+         radial-gradient(900px 500px at 12% -8%, rgba(78,111,191,.20), transparent 60%),
+         radial-gradient(760px 460px at 92% 0%, rgba(198,240,36,.06), transparent 55%);
+       background-attachment:fixed;
+       font:14px/1.55 "Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+
+  header{background:rgba(22,38,68,.92);border-bottom:1px solid var(--line);padding:14px 22px;
+         display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+         backdrop-filter:blur(6px);position:sticky;top:0;z-index:5;}
+  header h1{font-size:17px;margin:0;font-weight:800;letter-spacing:.02em;color:#fff;}
+  header h1::after{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;
+                   background:var(--lime);margin-left:8px;vertical-align:middle;}
+  header .tag{font-size:12px;color:var(--dim);flex:1;min-width:200px;}
+
+  .chip{font-size:10.5px;font-weight:800;padding:4px 10px;border-radius:20px;letter-spacing:.04em;
+        border:1px solid transparent;}
+  .chip.off{background:rgba(214,42,68,.16);color:#FF9AA8;border-color:rgba(214,42,68,.45);}
+  .chip.on{background:var(--lime);color:var(--lime-ink);border-color:var(--lime);}
+  .chip.warn{background:rgba(150,100,22,.16);color:#F0BE6B;border-color:rgba(150,100,22,.45);}
+
+  main{max-width:1240px;margin:0 auto;padding:20px 16px 60px;
+       display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start;}
+  @media (max-width:920px){ main{grid-template-columns:1fr;} }
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;
+         box-shadow:0 8px 26px rgba(0,0,0,.32);}
+  .panel > h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--peri);
+              margin:0;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--card-hd);
+              font-weight:700;}
+  .body{padding:16px;}
+
+  #drop{border:2px dashed var(--line);border-radius:12px;padding:38px 20px;text-align:center;
+        cursor:pointer;transition:.15s;background:var(--bg-2);}
+  #drop:hover{border-color:var(--lime);background:#16294a;}
+  #drop.over{border-color:var(--lime);background:#1B3055;transform:scale(1.01);}
+  #drop .big{font-size:15px;font-weight:700;margin-bottom:4px;color:var(--ink);}
+  #drop .small{font-size:12px;color:var(--dim);}
+
+  #preview{display:none;}
+  #preview img{width:100%;border-radius:10px;display:block;background:#000;
+               border:1px solid var(--line);}
+  .imgbar{display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap;}
+
+  button{font:inherit;padding:7px 13px;border-radius:8px;border:1px solid var(--line);
+         background:var(--bg-2);color:var(--ink);cursor:pointer;transition:.12s;}
+  button:hover:not(:disabled){border-color:var(--peri);color:#fff;background:#1D3159;}
+  button:disabled{opacity:.4;cursor:default;}
+  button.primary{background:var(--lime);color:var(--lime-ink);border-color:var(--lime);font-weight:800;}
+  button.primary:hover:not(:disabled){background:#D4FB4A;color:var(--lime-ink);border-color:#D4FB4A;}
+  button:focus-visible{outline:2px solid var(--lime);outline-offset:2px;}
+
+  .fname{font-size:11.5px;color:var(--dim);font-family:ui-monospace,Consolas,monospace;
+         overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:80px;}
+
+  .spinner{display:none;text-align:center;padding:34px 16px;color:var(--dim);}
+  .spinner.on{display:block;}
+  .ring{width:30px;height:30px;border:3px solid rgba(143,165,213,.25);border-top-color:var(--lime);
+        border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .headline{color:#fff;font-size:18px;font-weight:800;padding:16px 18px;border-radius:10px;
+            box-shadow:0 6px 18px rgba(0,0,0,.30);}
+  .headline .sub{font-size:13px;font-weight:400;opacity:.95;margin-top:6px;}
+
+  h3{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--peri);
+     margin:22px 0 6px;border-bottom:1px solid var(--line);padding-bottom:4px;font-weight:700;}
+  .grade{font-size:16px;font-weight:800;margin:4px 0 2px;color:#fff;}
+
+  .action{background:rgba(198,240,36,.08);border-left:4px solid var(--lime);padding:12px 14px;
+          border-radius:0 8px 8px 0;font-size:14px;color:var(--ink);}
+  .action .when{font-size:12.5px;color:var(--peri);margin-top:4px;font-weight:700;}
+  .alert{background:rgba(214,42,68,.12);border-left:4px solid var(--red);color:#FFC2CB;padding:12px 14px;
+         margin:12px 0;border-radius:0 8px 8px 0;font-size:12.5px;}
+  .note{background:var(--bg-2);border-left:4px solid var(--peri);color:var(--dim);padding:12px 14px;
+        margin:12px 0;border-radius:0 8px 8px 0;font-size:12.5px;}
+  .dim{color:var(--dim);font-size:12.5px;}
+  ul{margin:6px 0;padding-left:20px;} li{margin:5px 0;}
+  b,strong{color:#fff;}
+  a{color:var(--lime);}
+
+  .bars{display:flex;gap:4px;margin-top:8px;text-align:center;font-size:10.5px;}
+  .bars div{flex:1;background:var(--bg-2);border-radius:6px;padding:5px 2px;
+            border-top:3px solid var(--blue);color:var(--dim);}
+  .bars div.top{background:rgba(198,240,36,.14);border-top-color:var(--lime);
+                font-weight:800;color:var(--ink);}
+
+  .foot{margin-top:22px;padding-top:10px;border-top:1px solid var(--line);
+        color:#6E82A8;font-size:11px;}
+  .empty{color:var(--dim);text-align:center;padding:44px 16px;font-size:13px;}
+
+  /* --- screening context form ------------------------------------------ */
+  .ctxnote{font-size:11.5px;color:var(--dim);background:var(--bg-2);
+           border-left:3px solid var(--peri);padding:9px 11px;
+           border-radius:0 8px 8px 0;margin-bottom:14px;}
+  .ctxnote b{color:var(--ink);}
+  .pform{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;margin-bottom:16px;}
+  .pform .f{display:flex;flex-direction:column;gap:4px;min-width:0;}
+  .pform label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+               color:var(--peri);font-weight:700;}
+  .pform input,.pform select{font:inherit;font-size:13px;padding:7px 9px;border-radius:8px;
+        border:1px solid var(--line);background:var(--bg-2);color:var(--ink);min-width:0;}
+  .pform input::placeholder{color:#5F739C;}
+  .pform input:focus,.pform select:focus{outline:none;border-color:var(--lime);
+        box-shadow:0 0 0 2px rgba(198,240,36,.18);}
+  @media (max-width:520px){ .pform{grid-template-columns:1fr;} }
+
+  .ptable{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px;}
+  .ptable td{padding:5px 0;border-bottom:1px solid var(--line);}
+  .ptable td:first-child{color:var(--dim);width:46%;}
+  .ptable td:last-child{color:var(--ink);font-weight:600;}
+
+
+  /* --- lesion detector benchmarks --------------------------------------
+     DATASET-LEVEL, NOT PATIENT-LEVEL. This panel is a fixed benchmark table:
+     it describes how each detector scored across an annotated dataset, and it
+     is identical for every photograph screened. It is deliberately styled to
+     look nothing like a result.
+
+     Palette: neutral blue / periwinkle only. Lime is brand and the red / green
+     / amber hues are reserved for screening outcomes (see the note at the top
+     of this file), so a benchmark bar must not borrow either - a red bar here
+     would read as a clinical alarm and a lime one as an all-clear, and this
+     panel means neither.
+     --------------------------------------------------------------------- */
+  .bench{grid-column:1/-1;}
+  .benchmeta{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
+             gap:9px 16px;background:var(--bg-2);border:1px solid var(--line);
+             border-radius:10px;padding:11px 13px;margin-bottom:14px;}
+  .benchmeta div{min-width:0;}
+  .benchmeta span{display:block;font-size:9.5px;text-transform:uppercase;
+                  letter-spacing:.06em;color:var(--peri);font-weight:700;}
+  .benchmeta b{font-size:12px;color:var(--ink);font-weight:600;}
+  .bench-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media (max-width:760px){ .bench-grid{grid-template-columns:1fr;} }
+  .bch{background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;}
+  .bch .ch{font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:9px;}
+  .mrow{display:grid;grid-template-columns:62px 1fr 44px;align-items:center;
+        gap:10px;font-size:11px;margin:6px 0;}
+  .mrow .lbl{color:var(--peri);text-transform:uppercase;letter-spacing:.05em;font-weight:700;}
+  .track{height:8px;background:rgba(143,165,213,.15);border-radius:5px;overflow:hidden;}
+  .fill{height:100%;border-radius:5px;min-width:2px;}
+  .fill.p{background:var(--blue);}
+  .fill.r{background:var(--peri);}
+  .fill.f{background:#3D5893;}
+  .mval{font-variant-numeric:tabular-nums;text-align:right;color:var(--ink);font-weight:700;}
+  .benchsrc{margin:14px 0 0;font-size:11px;color:#6E82A8;
+            border-top:1px solid var(--line);padding-top:9px;}
+
+
+  /* --- calibration status strip ----------------------------------------
+     The operating point, stated where it cannot be missed. The chip alone
+     said only IS / IS NOT calibrated; a calibration belongs to ONE camera,
+     and only the operator can tell whether it is the camera in front of
+     them - so the site is named, and the sensitivity/specificity pair it
+     was measured at is shown together. Never one without the other: a
+     calibration buys sensitivity by spending specificity, and showing only
+     the half that improved would misrepresent the trade.
+     --------------------------------------------------------------------- */
+  .calibstrip{grid-column:1/-1;border-radius:10px;padding:11px 14px;font-size:12.5px;
+              border:1px solid var(--line);background:var(--bg-2);}
+  .calibstrip.warn{background:rgba(214,42,68,.12);border-color:rgba(214,42,68,.45);
+                   color:#FFC2CB;border-left:4px solid var(--red);}
+  .calibstrip.ok{border-left:4px solid var(--peri);}
+  .calibstrip b{color:#fff;}
+  .calibstrip .site{font-weight:700;color:var(--ink);}
+  .calibstrip .nums{margin-top:5px;color:var(--dim);font-variant-numeric:tabular-nums;}
+  .calibstrip .nums b{color:var(--ink);}
+
+  ::selection{background:var(--lime);color:var(--lime-ink);}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>DRishti-AI</h1>
+  <span class="tag">Explainable diabetic retinopathy screening · screening aid, not a diagnosis</span>
+  <span class="chip off" id="calibChip">NOT CALIBRATED</span>
+  <span class="chip warn" id="workerChip">checking engine…</span>
+</header>
+
+<main>
+  <div class="calibstrip warn" id="calibStrip">
+    <b>Operating point not yet known.</b> Waiting for the inference engine.
+  </div>
+
+  <!-- ---------------------------------------------------------- left -->
+  <section class="panel">
+    <h2>Retinal photograph</h2>
+    <div class="body">
+      <div class="ctxnote"><b>Screening context &mdash; not used by the model.</b>
+        The grade is computed from the photograph alone. These fields travel with
+        the referral and print on the report. Anything left blank prints as
+        &ldquo;not recorded&rdquo; rather than a plausible default.</div>
+
+      <div class="pform">
+        <div class="f"><label for="pid">Patient ID</label>
+          <input id="pid" maxlength="48" placeholder="P-1024" autocomplete="off"></div>
+        <div class="f"><label for="page">Age</label>
+          <input id="page" maxlength="3" inputmode="numeric" placeholder="52" autocomplete="off"></div>
+        <div class="f"><label for="psex">Sex</label>
+          <select id="psex">
+            <option value="">not recorded</option>
+            <option>Female</option><option>Male</option><option>Other</option>
+          </select></div>
+        <div class="f"><label for="pdur">Diabetes duration</label>
+          <input id="pdur" maxlength="24" placeholder="8 years" autocomplete="off"></div>
+        <div class="f"><label for="psite">Screening centre</label>
+          <input id="psite" maxlength="48" placeholder="PHC Mathura-01" autocomplete="off"></div>
+        <div class="f"><label for="pcam">Camera</label>
+          <input id="pcam" maxlength="48" placeholder="FundusCam-X" autocomplete="off"></div>
+      </div>
+
+      <div id="drop">
+        <div class="big">Drag a retinal photograph here</div>
+        <div class="small">or click to browse · PNG, JPG, TIFF · you can also paste from the clipboard</div>
+      </div>
+      <input type="file" id="file" accept=".png,.jpg,.jpeg,.tif,.tiff,.bmp" hidden>
+
+      <div id="preview">
+        <img id="shot" alt="uploaded retinal photograph">
+        <div class="imgbar">
+          <button class="primary" id="runBtn">Screen this image</button>
+          <button id="toggleBtn" disabled>Show AI attention</button>
+          <button id="pdfBtn" disabled title="Opens the clinical report and the print dialog">Download PDF report</button>
+          <button id="clearBtn">Clear</button>
+          <span class="fname" id="fname"></span>
+        </div>
+        <div class="dim" id="imgnote" style="margin-top:8px"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------- right -->
+  <section class="panel">
+    <h2>What this means</h2>
+    <div class="spinner" id="spin">
+      <div class="ring"></div>
+      Screening… quality gate, lesion features, ICDR grade, Grad-CAM.<br>
+      <span class="dim">Usually 10–30 s once the engine is warm; a large photograph takes longer.</span>
+      <div class="dim" id="elapsed" style="margin-top:8px;font-variant-numeric:tabular-nums"></div>
+    </div>
+    <div class="body" id="out">
+      <div class="empty">Drop a photograph on the left to see a result here.</div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------- full width, below -->
+  <!-- Dataset-level detector benchmarks. Values are the measured held-out
+       figures recorded in results/lesion_validation.mat (IDRiD segmentation
+       test split, measured 2026-09-13, against the bar frozen in
+       config/lesion_validation_thresholds.json, sha 1c447a7428e4781a...).
+
+       They are embedded here because this is a static benchmark, not a
+       per-image quantity - it is the same for every photograph. NOTHING in
+       this panel feeds, or is fed by, the per-patient reliability gating:
+       which channels may appear in a patient's report is still decided at
+       runtime from results/lesion_validation.mat by loadLesionReliability, and
+       is untouched by anything here.
+
+       WHEN THE DETECTORS ARE RE-MEASURED, UPDATE BENCH BELOW. It is a copy,
+       and a copy can go stale - that is the cost of keeping this panel
+       frontend-only. -->
+  <section class="panel bench">
+    <h2>Lesion detector benchmarks</h2>
+    <div class="body">
+      <div class="ctxnote"><b>Dataset-level validation benchmark, not patient-specific
+        confidence.</b> These figures are how each detector scored across a fixed
+        annotated dataset. They are the same for every photograph, say nothing about
+        the image on screen, and must not be read as a confidence in this patient's
+        result. Whether a channel is allowed to appear in a patient's report is
+        decided separately, from the same measurement, and is not changed by this
+        panel.</div>
+
+      <div class="benchmeta">
+        <div><span>Dataset</span><b>IDRiD segmentation</b></div>
+        <div><span>Split</span><b>test &mdash; held out</b></div>
+        <div><span>Images</span><b>n = 27</b></div>
+        <div><span>Aggregation</span><b>micro-averaged</b></div>
+        <div><span>Matching</span><b>per-lesion, 8-connected, FOV-masked</b></div>
+        <div><span>Measured</span><b>2026-09-13</b></div>
+      </div>
+
+      <div class="bench-grid" id="benchGrid"></div>
+
+      <p class="benchsrc">Bars are on an absolute 0&ndash;1 scale, not scaled to the
+        largest value, so a weak detector looks weak. Source:
+        <code>results/lesion_validation.mat</code> &middot; protocol and the full
+        write-up in <code>docs/phase2_results.md</code> &sect;2.</p>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+
+/* Headline colours arrive from the clinical report generator
+   (plainLanguageReport.m), which picks them for PRINT - the same values go
+   into the PDF, where the ground is white. On this dark ground they read as
+   muddy and lose their separation from each other.
+
+   Remapped HERE, not there, so the printed report keeps a palette chosen for
+   paper. The mapping is hue-preserving: red stays red, green stays green,
+   amber stays amber. An unrecognised value passes through untouched rather
+   than being coerced to a house colour - if the report starts emitting a new
+   clinical state, it must show up as itself, not silently wear the wrong one. */
+const HEADLINE_DARK = {
+  '#b91c1c': '#DB2741',   /* referable - urgent  */
+  '#15803d': '#258155',   /* not referable       */
+  '#b45309': '#9B6816'    /* ungradable          */
+};
+const headlineBg = c => HEADLINE_DARK[String(c || '').toLowerCase()] || c || '#4E6FBF';
+let currentFile = null, original = null, overlay = null, showingOverlay = false;
+let reportFile = null;
+
+/* ------------------------------------------------------------- engine */
+async function poll(){
+  try{
+    const s = await (await fetch('/api/status')).json();
+    $('workerChip').className = 'chip ' + (s.workerAlive ? 'on' : 'off');
+    $('workerChip').textContent = s.workerAlive ? 'ENGINE READY' : 'ENGINE OFFLINE';
+    $('calibChip').className = 'chip ' + (s.calibrated ? 'on' : 'off');
+    $('calibChip').textContent = s.calibrated
+      ? 'SITE CALIBRATED' + (s.site ? ' · ' + s.site : '')
+      : 'NOT CALIBRATED';
+    renderCalibStrip(s);
+  }catch(e){
+    $('workerChip').className = 'chip off';
+    $('workerChip').textContent = 'SERVER LOST';
+  }
+}
+poll(); setInterval(poll, 3000);
+
+/* ----------------------------------------------------- screening context */
+/* Operator-entered metadata. It rides alongside the image, prints on the
+   report, and is NOT an input to the model - the grade comes from pixels only.
+   An empty field is omitted entirely rather than sent as "", so the report can
+   distinguish "not recorded" from "recorded as blank". */
+function collectContext(){
+  const v = id => ($(id).value || '').trim();
+  const patient = {}, screening = {};
+  if(v('pid'))   patient.id = v('pid');
+  if(v('page'))  patient.age = v('page');
+  if(v('psex'))  patient.gender = v('psex');
+  if(v('pdur'))  patient.diabetesDuration = v('pdur');
+  if(v('psite')) screening.centre = v('psite');
+  if(v('pcam'))  screening.camera = v('pcam');
+  return {patient, screening};
+}
+
+/* Base64 rather than raw JSON in the header: these are free-text fields, and a
+   raw header value containing a newline would let the client inject additional
+   HTTP headers. btoa is latin1-only, so the string is UTF-8 encoded first -
+   otherwise a non-ASCII centre name throws instead of screening the image.
+   The server re-validates and strips anyway; this is the outer of two layers. */
+function contextHeader(){
+  const bytes = new TextEncoder().encode(JSON.stringify(collectContext()));
+  let bin = '';
+  bytes.forEach(b => { bin += String.fromCharCode(b); });
+  return btoa(bin);
+}
+
+/* Rendered from the WORKER's echo, not from the form, so the results page shows
+   what actually reached the PDF after server-side sanitising. */
+function contextBlock(r){
+  const p = r.patient || {}, sc = r.screening || {};
+  const rows = [
+    ['Patient ID', p.id], ['Age', p.age], ['Sex', p.gender],
+    ['Diabetes duration', p.diabetesDuration],
+    ['Screening centre', sc.centre], ['Camera', sc.camera]
+  ].filter(x => x[1]);
+  if(!rows.length) return '';
+  return `<h3>Screening context</h3>
+    <table class="ptable">${rows.map(x =>
+      `<tr><td>${esc(x[0])}</td><td>${esc(x[1])}</td></tr>`).join('')}</table>
+    <div class="dim" style="margin-top:6px">Operator-entered, carried to the
+      referral and the PDF. Not an input to the grade.</div>`;
+}
+
+/* --------------------------------------------------------------- input */
+function accept(file){
+  if(!file) return;
+  currentFile = file;
+  const fr = new FileReader();
+  fr.onload = e => {
+    original = e.target.result; overlay = null; showingOverlay = false;
+    reportFile = null; $('pdfBtn').disabled = true;
+    $('shot').src = original;
+    $('preview').style.display = 'block';
+    $('drop').style.display = 'none';
+    $('fname').textContent = file.name;
+    $('toggleBtn').disabled = true;
+    $('toggleBtn').textContent = 'Show AI attention';
+    $('imgnote').textContent = '';
+    $('out').innerHTML = '<div class="empty">Press <b>Screen this image</b>.</div>';
+  };
+  fr.readAsDataURL(file);
+}
+
+$('drop').onclick = () => $('file').click();
+$('file').onchange = e => accept(e.target.files[0]);
+['dragenter','dragover'].forEach(ev =>
+  $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('over'); }));
+['dragleave','drop'].forEach(ev =>
+  $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
+$('drop').addEventListener('drop', e => accept(e.dataTransfer.files[0]));
+
+/* Dropping anywhere on the page is what people actually try, so the whole
+   window accepts it - but only once the drop zone is gone would a stray drag
+   otherwise navigate the browser away from the dashboard. */
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => { e.preventDefault();
+  if(e.dataTransfer.files.length) accept(e.dataTransfer.files[0]); });
+window.addEventListener('paste', e => {
+  const it = [...(e.clipboardData?.files || [])][0];
+  if(it) accept(it);
+});
+
+$('clearBtn').onclick = () => {
+  currentFile = original = overlay = null;
+  reportFile = null; $('pdfBtn').disabled = true;
+  $('preview').style.display = 'none';
+  $('drop').style.display = 'block';
+  $('file').value = '';
+  $('out').innerHTML = '<div class="empty">Drop a photograph on the left to see a result here.</div>';
+};
+
+/* The browser's own print dialog is the PDF writer - no extra dependency, and
+   it is the one path that works identically on every machine a judge might use. */
+$('pdfBtn').onclick = () => {
+  if(!reportFile) return;
+  window.open('/api/report?f=' + encodeURIComponent(reportFile) + '&print=1', '_blank');
+};
+
+$('toggleBtn').onclick = () => {
+  if(!overlay) return;
+  showingOverlay = !showingOverlay;
+  $('shot').src = showingOverlay ? overlay : original;
+  $('toggleBtn').textContent = showingOverlay ? 'Show original' : 'Show AI attention';
+  $('imgnote').textContent = showingOverlay
+    ? 'Grad-CAM. Red is where the network looked hardest — it shows WHERE, never WHY.'
+    : '';
+};
+
+/* -------------------------------------------------------------- screen */
+$('runBtn').onclick = async () => {
+  if(!currentFile) return;
+  $('spin').classList.add('on');
+  $('out').style.display = 'none';
+  $('runBtn').disabled = true;
+  const t0 = Date.now();
+  const tick = setInterval(() => {
+    $('elapsed').textContent = ((Date.now()-t0)/1000).toFixed(0) + ' s';
+  }, 250);
+  try{
+    const res = await fetch('/api/screen', {
+      method:'POST', body: currentFile,
+      headers:{'X-Filename': currentFile.name, 'X-Patient-Meta': contextHeader()}
+    });
+    render(await res.json());
+  }catch(err){
+    render({ok:false, error:'Could not reach the server: ' + err.message});
+  }finally{
+    clearInterval(tick);
+    $('elapsed').textContent = '';
+    $('spin').classList.remove('on');
+    $('out').style.display = 'block';
+    $('runBtn').disabled = false;
+  }
+};
+
+/* -------------------------------------------------------------- render */
+const esc = s => String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const list = a => (a && a.length) ? '<ul>' + a.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>' : '';
+const arr  = v => Array.isArray(v) ? v : (v == null ? [] : [v]);
+
+function render(r){
+  if(!r.ok){
+    $('out').innerHTML = `<div class="alert"><b>Could not screen this image.</b><br>${esc(r.error)}</div>`;
+    return;
+  }
+  const P = r.plain || {};
+
+  reportFile = r.report || null;
+  $('pdfBtn').disabled = !reportFile;
+
+  if(r.overlayData){
+    overlay = r.overlayData;
+    $('toggleBtn').disabled = false;
+    // The explanation is the point of the system, so it is shown by default.
+    showingOverlay = true;
+    $('shot').src = overlay;
+    $('toggleBtn').textContent = 'Show original';
+    $('imgnote').textContent =
+      'Grad-CAM. Red is where the network looked hardest — it shows WHERE, never WHY.';
+  }
+
+  const warns = arr(P.warnings);
+  const notCal = warns.filter(w => String(w).startsWith('THIS CAMERA'));
+  const rest   = warns.filter(w => !String(w).startsWith('THIS CAMERA'));
+
+  let h = '';
+  h += `<div class="headline" style="background:${esc(headlineBg(P.headlineColour))}">
+          ${esc(P.headline)}<div class="sub">${esc(P.subhead)}</div></div>`;
+
+  // The calibration warning sits ABOVE the detail, never as a footnote.
+  notCal.forEach(w => h += `<div class="alert">${esc(w)}</div>`);
+
+  // Who this result belongs to, before the clinical detail.
+  h += contextBlock(r);
+
+  h += `<h3>What the system found</h3>
+        <div class="grade">${esc(P.gradeLabel)}</div>
+        <p>${esc(P.meaning)}</p>`;
+
+  // Shown only when the headline and the grade look like they disagree.
+  if(P.gradeVsDecision) h += `<div class="note">${esc(P.gradeVsDecision)}</div>`;
+
+  h += `<p class="dim">${esc(P.confidence)}</p>`;
+
+  const probs = arr(r.gradeProbs);
+  if(probs.length === 5){
+    const top = probs.indexOf(Math.max(...probs));
+    h += '<div class="bars">' + probs.map((p,i) =>
+      `<div class="${i===top?'top':''}">Grade ${i}<br>${(p*100).toFixed(1)}%</div>`).join('') + '</div>';
+  }
+
+  h += `<h3>What to do next</h3>
+        <div class="action"><b>${esc(P.action)}</b><div class="when">${esc(P.when)}</div></div>`;
+
+  h += `<h3>The photograph itself</h3><p>${esc(P.imageQuality)}</p>`;
+  h += `<h3>Why the system says this</h3>${list(arr(P.evidence))}`;
+  h += `<h3>What this system will not tell you</h3>
+        <p class="dim">These detectors run, but their results are hidden on purpose. A number
+        that is wrong most of the time is worse on a clinical document than no number at all.</p>
+        ${list(arr(P.withheld))}`;
+  h += `<h3>Before you rely on this</h3>${list(rest)}`;
+
+  const secs = (typeof r.seconds === 'number') ? r.seconds.toFixed(1) + ' s' : '';
+  h += `<div class="foot">${esc(r.decision || '')} ·
+        ${r.calibrated ? 'site-calibrated' : 'frozen APTOS (uncalibrated)'} ·
+        ${secs} · ${new Date().toLocaleString()}</div>`;
+
+  $('out').innerHTML = h;
+}
+
+/* ----------------------------------------------------------------------
+   Lesion detector benchmarks - dataset level, rendered once on load.
+
+   Numbers are TRANSCRIBED from results/lesion_validation.mat, not computed
+   here: the frontend must never derive a metric. Full precision is kept as
+   measured and only the DISPLAY is rounded, so nothing is silently restated
+   at a different precision than it was measured.
+
+   This block is independent of any screening result. It does not read `r`,
+   does not touch P.withheld, and does not influence the per-patient
+   reliability gating.
+   ---------------------------------------------------------------------- */
+const BENCH = [
+  {name:'Microaneurysms', precision:0.028156,  recall:0.409217,  f1:0.0526869},
+  {name:'Haemorrhages',   precision:0.164343,  recall:0.310861,  f1:0.215014 },
+  {name:'Hard exudates',  precision:0.817061,  recall:0.133382,  f1:0.229327 },
+  {name:'Soft exudates',  precision:0.0384615, recall:0.0263158, f1:0.03125  }
+];
+
+function metricRow(label, cls, v){
+  const pct = (v * 100).toFixed(1);
+  return `<div class="mrow">
+            <span class="lbl">${label}</span>
+            <div class="track"><div class="fill ${cls}" style="width:${pct}%"></div></div>
+            <span class="mval">${v.toFixed(3)}</span>
+          </div>`;
+}
+
+function renderBenchmarks(){
+  const el = $('benchGrid');
+  if(!el) return;
+  el.innerHTML = BENCH.map(d => `
+    <div class="bch">
+      <div class="ch">${esc(d.name)}</div>
+      ${metricRow('Precision','p',d.precision)}
+      ${metricRow('Recall','r',d.recall)}
+      ${metricRow('F1','f',d.f1)}
+    </div>`).join('');
+}
+renderBenchmarks();
+
+/* ----------------------------------------------------------------------
+   Calibration status. Everything here is transcribed from the worker's
+   heartbeat - the browser computes no metric and rounds only for display.
+   ---------------------------------------------------------------------- */
+function pct(v){ return (typeof v === 'number') ? (v*100).toFixed(1) + '%' : null; }
+
+function renderCalibStrip(s){
+  const el = $('calibStrip');
+  if(!el) return;
+
+  if(!s.calibrated){
+    el.className = 'calibstrip warn';
+    el.innerHTML = '<b>This camera has not been calibrated.</b> Results use the ' +
+      'shipped APTOS operating point. On a camera it had not seen before that ' +
+      'threshold found only <b>31.2%</b> of patients who needed referral. ' +
+      'Treat every &ldquo;no referral&rdquo; as weak evidence until a local ' +
+      'calibration is fitted.';
+    return;
+  }
+
+  el.className = 'calibstrip ok';
+  let h = '<span class="site">Site-calibrated operating point &middot; ' +
+          esc(s.site || 'site not recorded') + '</span>';
+
+  // Both numbers or neither - never sensitivity on its own.
+  const cSe = pct(s.calSensitivity), cSp = pct(s.calSpecificity);
+  const uSe = pct(s.uncalSensitivity), uSp = pct(s.uncalSpecificity);
+  if(cSe && cSp){
+    h += '<div class="nums">Measured on ' + esc(s.calEvalSet || 'a held-back set') +
+         (s.calEvalN ? ' (n=' + s.calEvalN + ')' : '') +
+         ', held back from the fit: sensitivity <b>' + cSe +
+         '</b>, specificity <b>' + cSp + '</b>.';
+    if(uSe && uSp){
+      h += ' Uncalibrated on the same images: ' + uSe + ' / ' + uSp + '.';
+    }
+    h += ' That is the calibration site&rsquo;s measured performance &mdash; not ' +
+         'this patient&rsquo;s confidence, and not a Messidor-2 result.</div>';
+  }else{
+    h += '<div class="nums">No held-back sensitivity/specificity recorded for ' +
+         'this calibration.</div>';
+  }
+  el.innerHTML = h;
+}
+</script>
+</body>
+</html>

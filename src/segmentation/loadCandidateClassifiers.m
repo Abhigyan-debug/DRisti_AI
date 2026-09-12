@@ -26,13 +26,16 @@ function CC = loadCandidateClassifiers()
 %   Training patches used to be cut from the FULL-RESOLUTION frame while
 %   inference cut them from the WORKING-SCALE frame, about a 2x difference in
 %   how much retina sat behind a 48 px patch on IDRiD. Both sides now go
-%   through CUTCANDIDATEPATCHES at working scale.
+%   through CUTCANDIDATEPATCHES, cutting whichever geometry the model records.
 %
 %   That fix inverts the mismatch for any model trained before it. Such a model
 %   loads without complaint, has the right input size, and produces plausible
 %   scores - it is simply looking at the wrong thing. So models are refused
-%   unless meta.patchGeometry matches REQUIRED_GEOMETRY, and the pipeline falls
-%   back to stage 1 alone until they are retrained.
+%   unless meta.patchGeometry is one of ACCEPTED_GEOMETRY, and the pipeline
+%   falls back to stage 1 alone until they are retrained. Both geometries are
+%   accepted because either is self-consistent between training and inference -
+%   RESOLVEPATCHSOURCE cuts to match the stamp. What is refused is a model with
+%   NO stamp, from before the two sides were tied together.
 %
 %   This fails CLOSED, for the same reason LOADLESIONRELIABILITY does: a silent
 %   degradation that still returns numbers is worse than a loud absence. The
@@ -63,7 +66,7 @@ function CC = loadCandidateClassifiers()
 
     % Bump this when the patch geometry changes again; every model trained
     % under a different one is then refused instead of silently misapplied.
-    REQUIRED_GEOMETRY = 'workingScale/v2';
+    ACCEPTED_GEOMETRY = {'workingScale/v2', 'fullRes/v2'};
 
     CC = {};
     stale = {};
@@ -78,7 +81,7 @@ function CC = loadCandidateClassifiers()
             continue
         end
         if ~isfield(C.meta, 'patchGeometry') || ...
-                ~strcmp(char(C.meta.patchGeometry), REQUIRED_GEOMETRY)
+                ~any(strcmp(char(C.meta.patchGeometry), ACCEPTED_GEOMETRY))
             [~, nm, ext] = fileparts(files{k});
             stale{end+1} = [nm ext]; %#ok<AGROW>
             continue
@@ -89,10 +92,10 @@ function CC = loadCandidateClassifiers()
     if ~isempty(stale)
         warning('drishti:staleClassifierGeometry', ...
             ['Ignoring %d stage-2 classifier(s) trained under an older patch ' ...
-             'geometry: %s. They were trained on full-resolution patches while ' ...
-             'inference now cuts working-scale ones, so their scores would be ' ...
-             'meaningless. Running stage 1 alone until rebuildDarkLesionDetectors ' ...
-             'has retrained them.'], ...
+             'geometry: %s. They predate the patchGeometry stamp, so there is ' ...
+             'no way to know which scale their patches were cut at and their ' ...
+             'scores cannot be trusted. Running stage 1 alone until ' ...
+             'rebuildDarkLesionDetectors has retrained them.'], ...
             numel(stale), strjoin(stale, ', '));
     end
 

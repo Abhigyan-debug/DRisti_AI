@@ -50,6 +50,11 @@ __pycache__/
 venv/
 .ipynb_checkpoints/
 
+# ---- Hand-made backups (keep them local; git is the backup) ----
+*.bak
+*.orig
+*.rej
+
 # ---- OS / editor ----
 Thumbs.db
 desktop.ini
@@ -59,3 +64,6 @@ desktop.ini
 
 # ---- Local machine config (data paths differ per teammate) ----
 config/local_paths.json
+
+# ---- Web dashboard scratch (uploaded images + results, never committed) ----
+webapp/jobs/

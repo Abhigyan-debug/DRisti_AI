@@ -209,27 +209,97 @@ threshold goes in the JSON — that is the audit trail proving no post-hoc tunin
 
 ---
 
-## 5. Open item — the measured cost of excluding DME
+## 5. The measured cost of excluding DME — **MEASURED 2026-09-13**
 
 This decision was made on the published argument and on label availability. One
-supporting number is **not yet measured**: how many IDRiD patients are DME-positive
+supporting number was left unmeasured: how many IDRiD patients are DME-positive
 but DR-negative, i.e. how many referrals a DR-only rule would actually miss in our
-own data.
+own data. It has now been measured with
+[`tools/idrid_dme_crosstab.py`](../tools/idrid_dme_crosstab.py) — two 24 KB CSVs,
+no images, no MATLAB.
 
-Run [`tools/idrid_dme_crosstab.py`](../tools/idrid_dme_crosstab.py) once IDRiD is
-present on a machine and paste the table here. It needs one 24 KB CSV, no images.
+> **Prediction on record, made before measuring:** the DR ≥ 2 and DME = 2 classes
+> overlap heavily — hard exudates near the macula usually accompany
+> moderate-or-worse retinopathy — so the count of DME-only referrals should be
+> **small, in the single-digit percent**. If it comes back large, that is
+> surprising and worth re-reading the labels before believing it. The decision in
+> §1 does not depend on the outcome; the argument for it is comparability, not
+> yield.
 
-> **Prediction on record, before measuring:** the DR ≥ 2 and DME = 2 classes overlap
-> heavily — hard exudates near the macula usually accompany moderate-or-worse
-> retinopathy — so the count of DME-only referrals should be **small, in the
-> single-digit percent**. If it comes back large, that is surprising and worth
-> re-reading the labels before believing it. The decision in §1 does not depend on
-> the outcome; the argument for it is comparability, not yield.
+**Result: 0 of 516 patients, 0.0%.** The prediction holds, with room to spare.
 
+Rule applied: `dr_grade >= 2 OR dme_referable`, with IDRiD's `dme_referable`
+resolved through the `dme_encoding` map as `value == 2`
+(`config/clinical_definitions.json` v1.1.0).
+
+### IDRiD train (n=413)
+
+| DR grade | DME 0 | DME 1 | DME 2 | total |
+|---|---|---|---|---|
+| 0 | 134 | 0 | 0 | 134 |
+| 1 | 20 | 0 | 0 | 20 |
+| 2 | 16 | 33 | 87 | 136 |
+| 3 | 3 | 4 | 67 | 74 |
+| 4 | 4 | 4 | 41 | 49 |
+
+referable DR-only (DR≥2) **259 (62.7%)** · DME-referable (DME=2) 195 (47.2%) ·
+both 195 (47.2%) · **DME-only referrals 0 (0.0%)** · combined rule 259 (62.7%).
+
+### IDRiD test (n=103)
+
+| DR grade | DME 0 | DME 1 | DME 2 | total |
+|---|---|---|---|---|
+| 0 | 34 | 0 | 0 | 34 |
+| 1 | 5 | 0 | 0 | 5 |
+| 2 | 0 | 3 | 29 | 32 |
+| 3 | 3 | 3 | 13 | 19 |
+| 4 | 3 | 4 | 6 | 13 |
+
+referable DR-only (DR≥2) **64 (62.1%)** · DME-referable (DME=2) 48 (46.6%) ·
+both 48 (46.6%) · **DME-only referrals 0 (0.0%)** · combined rule 64 (62.1%).
+
+### What this means — and what it does not
+
+**It is stronger than "small".** Look at the DME 1 and DME 2 columns for DR grades
+0 and 1: they are empty in both splits. In IDRiD, *no patient graded DR 0 or DR 1
+carries any macular-oedema risk label at all.* DME positivity is not merely
+correlated with DR ≥ 2 here, it is **nested inside it**. A DR-only rule and the
+combined rule select the identical patients.
+
+**Therefore every IDRiD number in this project is unaffected by the DME clause.**
+The site-calibration figures (75.0% → 82.8% sensitivity), the lesion-detector
+splits and the IDRiD grading evaluation would all be numerically identical under a
+DR-only endpoint. That is worth knowing: it removes DME as a confound when reading
+any IDRiD result.
+
+**It does NOT show the DME clause is useless**, and it must not be quoted that way —
+the very next dataset contradicts it:
+
+- **It is one dataset's grading convention.** The nesting most likely reflects that
+  the same reader assigned both labels against a protocol where macular oedema is
+  not recorded below moderate retinopathy. Another centre's readers need not behave
+  that way, and a real patient can have clinically significant macular oedema with
+  minimal retinopathy — that is precisely why the published definition includes it.
+- **The nesting does NOT replicate on Messidor-2 — and that is the decisive point.**
+  Messidor-2's DME marginal was read during the B12 diagnosis (1593 / 151 / 4 blank,
+  declared in the Phase 6 write-up), and **8 of 1744 gradable images are DME-only
+  referrals** — DR < 2 with DME present. Referable prevalence is 26.7% under the
+  intended rule against 26.2% DR-only. Small, but non-zero: on a second camera the
+  DME clause selects patients a DR-only rule does not. **The system missed all 8 of
+  them** at the frozen threshold. So the IDRiD result below is a property of IDRiD's
+  grading convention, not a general fact about the disease, and anyone citing the
+  0.0% as grounds to drop the clause would be generalising from the one cohort where
+  it happens to be redundant.
+- **APTOS has no DME labels at all**, which is why APTOS numbers are the DR-only
+  endpoint and are not comparable to Gulshan or IDx-DR.
+- **The clause earns its place on comparability, not yield.** Our endpoint matches
+  IDx-DR's `mtmDR` positive class; that is what makes the comparison legitimate.
+  Dropping a clause because it happened to add zero patients in one cohort would
+  break that match to buy nothing.
+
+**The decision in §1 stands, unchanged — as §1 said in advance that it would.**
 Recording the prediction first is the point. A number that can only confirm you is
 not evidence.
-
----
 
 ## 6. What this unblocks
 
@@ -244,4 +314,4 @@ not evidence.
 
 - Recruit the ophthalmologist reviewer for the Phase 4 Grad-CAM rating —
   instrument drafted at [gradcam_review_protocol.md](gradcam_review_protocol.md).
-- Fill §5 when IDRiD is available.
+- ~~Fill §5 when IDRiD is available.~~ ✅ **Done 2026-09-13** — measured, 0/516 DME-only referrals; the pre-registered prediction held.

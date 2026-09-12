@@ -33,9 +33,10 @@ measured on the run that just happened** instead of a constant:
 ```
 
 This closes the loop Phase 5 could not close alone. A 5-image IDRiD run measured
-8.89 s/image against the 7.65 s the contract carries — within the spread of the
-benchmark (mean 10.15, sd 4.76) and a reminder that service time is
-image-dependent, not a constant.
+8.89 s/image against the 10.56 s mean the contract carries. Both are consistent
+with the measured distribution (median 7.61, mean 10.56, sd 5.37, 33% of images
+over 12 s): a 5-image sample lands wherever its particular images fall. Service
+time is image-dependent, not a constant — see phase5 §2.
 
 ### The holdout is protected in code, not by memory
 
@@ -140,7 +141,10 @@ On Messidor-2 at the frozen threshold of **0.4033**:
 The model still *ranks* correctly (AUC 0.885) — referable cases score ~30× higher
 than non-referable ones. The threshold is simply in the wrong place for this
 camera. **A ranking failure and a calibration failure need opposite fixes**, and
-this is the latter, which is why per-site calibration recovers it (31.2% → 90.0%).
+this is the latter, which is why per-site calibration helps. How much it
+recovers is measured only on IDRiD (75.0% → 82.8% sensitivity, 97.4% → 76.9%
+specificity); it has NOT been re-measured on Messidor-2 and must not be quoted
+as a Messidor-2 recovery.
 
 ### 5.2 Severity blindness — the failure is concentrated at grade 2
 
@@ -163,9 +167,10 @@ cheapest and most effective — and grade 2 is **67% of all referable patients**
 this cohort.
 
 The 8 grade-1 referable cases are referable via **DME**, and **all 8 are missed** —
-consistent with the DME arm resting on hard-exudate detection, whose measured
-precision (0.549) only clears the display bar at a tightened threshold
-(phase3 §3e.1).
+consistent with the DME arm resting on hard-exudate detection. That channel does
+clear the display bar — precision **0.817** on the held-out IDRiD test split — but
+its **recall is 0.133**: it finds roughly one exudate in seven, which is the side
+of the trade-off that loses these eight cases (phase2_results.md §2).
 
 ### 5.3 Ungradable
 
@@ -178,10 +183,16 @@ number should not be read as a field expectation.
 ## 6. What a deployment must do
 
 1. **Calibrate per site before screening anyone.** ~200 locally-labelled images,
-   `fitSiteCalibration.m`, calibration and evaluation sets disjoint. Without it,
+   `buildSiteCalibration.m`, calibration and evaluation sets disjoint. Without it,
    68.8% of referable patients score below threshold.
 2. **Re-budget specialist time after calibrating** — calibration buys sensitivity
-   with specificity (99.5% → 57.9%), moving specialist load ~20× (phase5 §5).
+   with specificity (97.4% → 76.9%, IDRiD-measured). Three ratios get quoted
+   around this and they are different comparisons, not disagreements (phase5 §5):
+   - **uncalibrated → calibrated: ~17×** (3.8 → 65.3 min/day) — the budgeting one
+   - **idealised → calibrated: ~2×** (32.0 → 65.3 min/day) — cost of assuming a
+     perfect classifier
+   - **calibrated vs pre-AI baseline: ~2.3× reduction** (200 → 88.5 min/day) —
+     the honest benefit of AI triage
 3. **Do not claim an accuracy benefit for integration.** Claim explainability,
    the recapture path, and deployability.
 4. **Expect grade-2 misses.** This is the dominant failure mode and it is where

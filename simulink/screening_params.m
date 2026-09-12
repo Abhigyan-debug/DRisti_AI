@@ -30,18 +30,45 @@ function [params, provenance] = screening_params(overrides)
 %   JSON; anything the contract does not cover keeps a local default and is
 %   tagged R4-LOCAL so the write-up can say which is which.
 %
-%   Sources & literature grounding:
-%     1. Aravind Tele-ophthalmology Network (Raman et al., Ophthalmology 2016;
-%        Prathiba et al., Community Eye Health 2018):
-%        - 6-8 minute bilateral acquisition time per patient.
+%   ⚠️ CITATIONS BELOW ARE UNVERIFIED - DO NOT PUT THEM ON A SLIDE (blocker B11).
+%   ------------------------------------------------------------------------
+%   This header once presented the three references below as "Sources &
+%   literature grounding". Three of them could not be located, and the pattern
+%   suggests plausible-looking recall rather than citation:
+%
+%     - "Rani et al., Eye 2021" (Sankara Nethralaya) - not found. The real
+%       Sankara Nethralaya teleophthalmology paper appears to be John et al.,
+%       Telemed J E Health 2012.
+%     - "Prathiba et al., Community Eye Health 2018" - the matching paper
+%       appears to be Prathiba & Rema, Int J Family Med 2011. Journal and year
+%       both differ.
+%     - "Raman et al., Ophthalmology 2016" (6-8 min acquisition) - not verified.
+%
+%   Absence from a search does not prove a citation is invented, and a separate
+%   attribution in this file WAS provably wrong: initialRejectRate = 0.12 was
+%   credited to docs/phase1_quality_baseline.md, which explicitly says it does
+%   not establish a reject rate. A judge who checks one citation and finds it
+%   wrong will discount every number in the deck, so these are quarantined here
+%   until someone reads the full texts.
+%
+%   THE SOURCED VALUES LIVE IN config/telemedicine_parameters.json, where each
+%   one is tagged SOURCED / DERIVED / ASSUMED with a reference that was checked.
+%   Quote that file, never this comment. Provenance: docs/telemedicine_parameters.md.
+%
+%   Retained below ONLY as the operating envelope those figures describe - the
+%   numbers are the shape of the problem, the attributions are not evidence:
+%     1. Aravind-style tele-ophthalmology network:
+%        - 6-8 minute bilateral acquisition time per patient.  [UNVERIFIED]
 %        - Rural bandwidth constraints and store-and-forward triage workflows.
-%     2. Sankara Nethralaya Rural Tele-screening Model (Rani et al., Eye 2021):
-%        - PHC non-mydriatic screening; ungradeable image rate ~8-12%.
-%        - Triage review time: <30s for normal/mild, 60-90s for referable.
-%     3. Ayushman Bharat Health & Wellness Centres (HWC) District Model:
-%        - Typical district population: 1.5 - 2.0 million.
-%        - Target diabetic population: ~150,000 (ICMR-INDIAB study: ~10% prevalence).
-%        - Annual screening target: 100,000 diabetic patients (~67% coverage).
+%     2. Sankara-Nethralaya-style rural tele-screening at PHC level:
+%        - non-mydriatic screening; ungradeable image rate ~8-12%.  [UNVERIFIED]
+%        - triage review time <30s normal/mild, 60-90s referable.  [UNVERIFIED,
+%          and contradicted by our own measurement: the report's reading floor
+%          alone is ~38 s. No clinician has been timed.]
+%     3. Ayushman Bharat Health & Wellness Centres (HWC) district model:
+%        - typical district population 1.5-2.0 million.
+%        - target diabetic population ~150,000 (ICMR-INDIAB, ~10% prevalence).
+%        - annual screening target 100,000 patients (~67% coverage).
 %
 %   See also SIMULATE_DISTRICT_THROUGHPUT, RUN_DISTRICT_SCENARIO_ANALYSIS.
 
@@ -143,6 +170,20 @@ function [params, provenance] = screening_params(overrides)
     params.reviewSecondsGrade4     = 90.0;     % Proliferative DR / DME (urgent referral, 90 sec)
     params.reviewSecondsUngradeable= 20.0;     % Permanent ungradeable review (<20 sec)
 
+    % ⚠️ REVIEW TIMES ARE UNVALIDATED ASSUMPTIONS, NOT MEASUREMENTS.
+    % These are Module 4's DESIGN TARGETS. No clinician has ever been timed.
+    % usabilityPass measured a ~38 s read-time FLOOR for the report's critical
+    % path (126 words at 200 wpm) - already ABOVE the 30 s assumed here, and
+    % excluding any time spent looking at the image. So these values are more
+    % likely optimistic than conservative, and every staffing figure derived
+    % from them is unvalidated. Tagged explicitly so the provenance map does not
+    % report them as ordinary local defaults.
+    for rf = ["reviewSecondsGrade0","reviewSecondsGrade1","reviewSecondsGrade2", ...
+              "reviewSecondsGrade3","reviewSecondsGrade4","reviewSecondsUngradeable"]
+        provenance.(rf) = 'ASSUMED-UNVALIDATED';
+    end
+
+
     % ⚠️ COHORT CONFLICT, DELIBERATELY LEFT VISIBLE.
     % This grade mix implies referable (ICDR >= 2) = 16% and describes a
     % DIABETIC-ONLY screened cohort. The contract's review.referral_rate is
@@ -201,11 +242,30 @@ function [params, provenance] = screening_params(overrides)
         params.probGrade2 * params.reviewSecondsGrade2 + ...
         params.probGrade3 * params.reviewSecondsGrade3 + ...
         params.probGrade4 * params.reviewSecondsGrade4;
-    % Expected average review time across the modelled population is ~21.6 s.
-    % NOTE this is conditional on Module 4 hitting its <30 s design target: the
-    % contract tags review time ASSUMED and says so explicitly. Phase 4 built
-    % the timing instrument (USABILITYPASS) but no clinician has been timed, so
-    % this remains an assumption, not an observation.
+    % ~21.6 s. THREE REVIEW-TIME NUMBERS EXIST IN THIS PROJECT AND THEY MEASURE
+    % DIFFERENT THINGS. They are not in conflict; quoting one for another is the
+    % only way to make them look contradictory:
+    %
+    %   21.6 s  ASSUMED. This value: the per-grade decision times above
+    %           (15/25/30/60/90 s) weighted by the modelled case mix. An
+    %           assumption about how long a clinician spends DECIDING, averaged
+    %           over a cohort that is mostly grade 0.
+    %   30 s    ASSUMED. Module 4's flat design target, and what
+    %           RECOMMEND_DISTRICT_CONFIGURATION uses for every triage arm so
+    %           that only the flagged FRACTION varies between arms.
+    %   ~38 s   MEASURED. A FLOOR on READING the report's decision-critical text
+    %           (126 words at 200 wpm silent reading, USABILITYPASS). It excludes
+    %           looking at the image and excludes judgement entirely.
+    %
+    % The comparison that matters: the measured reading floor (~38 s) is ABOVE
+    % both assumed decision times. Reading the report cannot be done in 21.6 s,
+    % so 21.6 s cannot be the total time to read AND decide. Both assumptions
+    % are therefore optimistic, and specialist-load figures built on them are
+    % more likely under-estimates than over-estimates.
+    %
+    % No clinician has been timed. USABILITYPASS generates the stopwatch-ready
+    % review set; until someone runs it, all three numbers stay assumptions or
+    % floors, and none of them is an observed review time.
     params.derivedReferableRate = params.probGrade2 + params.probGrade3 + params.probGrade4;
 
     % Every field not explicitly tagged above is this file's own default.

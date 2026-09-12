@@ -32,11 +32,12 @@ function D = buildCandidateDataset(opts)
 %   and the discrepancy scaled with image resolution, making it a camera
 %   fingerprint rather than a constant offset.
 %
-%   Both sides now call CUTCANDIDATEPATCHES on the working-scale image that
-%   DETECTDARKLESIONS returns via 'returnCandidates'. Read that function's
-%   header for the full account, including why edge candidates are clamped
-%   rather than skipped - this file used to drop them while the scorer kept
-%   them unscored, which let them bypass the filter altogether.
+%   Both sides now call CUTCANDIDATEPATCHES, and the geometry is an explicit
+%   option ('patchGeometry') that the trained model records and inference
+%   obeys, so the two can no longer disagree whichever one is chosen. Read that
+%   function's header for the full account, including why edge candidates are
+%   clamped rather than skipped - this file used to drop them while the scorer
+%   kept them unscored, which let them bypass the filter altogether.
 %
 %   LABELLING RULE
 %   --------------
@@ -82,6 +83,15 @@ function D = buildCandidateDataset(opts)
         % directory - or worse, silently picked up a stale one from an earlier
         % threshold.
         opts.threshSD (1,1) double = 0.75
+        % Which image the 48 px patch is cut from. 'workingScale' takes it from
+        % the FOV-normalised frame (more retina, coarser); 'fullRes' maps the
+        % centroid back to the original frame and cuts there (less retina,
+        % ~2.2x finer on IDRiD). Both are self-consistent with inference,
+        % because the saved model records which was used and
+        % RESOLVEPATCHSOURCE obeys it. Which is BETTER is an empirical
+        % question - see ABLATECANDIDATEPATCHGEOMETRY.
+        opts.patchGeometry (1,:) char ...
+            {mustBeMember(opts.patchGeometry,{'workingScale','fullRes'})} = 'workingScale'
         opts.fragmentRejection (1,1) logical = true
         opts.verbose (1,1) logical = true
     end
@@ -103,8 +113,15 @@ function D = buildCandidateDataset(opts)
     % threshold with an unrelated one from another - sometimes leaving the same
     % filename present in BOTH pos/ and neg/ once relabelled. This happened
     % once during a threshSD 1.5 -> 0.75 rebuild and had to be wiped and redone.
+    % The directory name carries the GEOMETRY as well as the threshold. Without
+    % it a fullRes build would silently overwrite a workingScale one patch by
+    % patch - the same collision this comment block already warns about for
+    % thresholds, and far harder to notice because the file COUNT would match.
     thrTag = strrep(sprintf('%.2f', opts.threshSD), '.', '');
-    outDir = fullfile(cfg.dataRoot, '_cache', sprintf('candidates_%s_t%s', opts.lesion, thrTag));
+    geomTag = 'ws';
+    if strcmp(opts.patchGeometry, 'fullRes'), geomTag = 'fr'; end
+    outDir = fullfile(cfg.dataRoot, '_cache', ...
+        sprintf('candidates_%s_%s_t%s', opts.lesion, geomTag, thrTag));
     for c = ["pos", "neg"]
         dd = fullfile(outDir, c);
         if ~isfolder(dd), mkdir(dd); end
@@ -127,6 +144,8 @@ function D = buildCandidateDataset(opts)
         d = detectDarkLesions(img, struct('fov',fov,'disc',disc,'vesselMask',v.mask), ...
             'threshSD', opts.threshSD, 'fragmentRejection', opts.fragmentRejection, ...
             'returnCandidates', true);
+        imgSize = [size(img,1) size(img,2)];
+        clear v
 
         % --- generator recall, at FULL resolution against untouched GT ------
         % Same masks and same matching VALIDATELESIONDETECTORS uses, so the
@@ -139,11 +158,23 @@ function D = buildCandidateDataset(opts)
             if any(candFull(ccG.PixelIdxList{q})), hit = hit + 1; end
         end
         genRecall(k) = hit / max(ccG.NumObjects, 1);
+        clear candFull ccG
 
         % --- labels and patches, at WORKING scale ---------------------------
+        % Take the candidates and drop `d`: it also carries maMask and haemMask
+        % at FULL resolution (12 MB each on IDRiD), which nothing below needs.
+        % These frames are large enough that holding dead buffers to the end of
+        % the iteration is what turns a comfortable run into an out-of-memory
+        % abort eight builds deep.
         C = d.candidates;
+        clear d
         centroids = C.(ch).centroids;
         if isempty(centroids), continue; end
+        if strcmp(opts.patchGeometry, 'fullRes')
+            % Patches come from the original frame in this mode, so the
+            % working-scale copy (60 MB of double) is dead weight.
+            C.workImage = [];
+        end
 
         % Max-pool the ground truth into working-scale cells: see LABELLING
         % RULE above. r is the side of the block one working pixel covers.
@@ -164,7 +195,18 @@ function D = buildCandidateDataset(opts)
                 base, ccW.NumObjects, ch, size(centroids,1));
         end
 
-        patches = cutCandidatePatches(C.workImage, centroids, opts.patchPx);
+        if strcmp(opts.patchGeometry, 'fullRes')
+            % Centroids are working-scale; 1/scale lifts them to the original
+            % frame so the patch resolves the lesion at native detail.
+            % The index list is spelled out rather than passed as []: an empty
+            % idx is a valid request for ZERO patches, not a request for all of
+            % them, so [] silently produced an empty array here.
+            allIdx = (1:size(centroids,1))';
+            patches = cutCandidatePatches(img, centroids, opts.patchPx, allIdx, 1/C.scale);
+        else
+            patches = cutCandidatePatches(C.workImage, centroids, opts.patchPx);
+        end
+        clear img gt
 
         for q = 1:ccW.NumObjects
             isPos = any(gtWork(ccW.PixelIdxList{q}));
@@ -182,7 +224,13 @@ function D = buildCandidateDataset(opts)
                 imwrite(pngPatch, fullfile(outDir, 'neg', sprintf('%s_%04d.png', base, q)));
             end
         end
-        nEdge = nEdge + countClamped(centroids, C.workSize, opts.patchPx);
+        clear patches
+        if strcmp(opts.patchGeometry, 'fullRes')
+            nEdge = nEdge + countClamped(centroids / C.scale, ...
+                imgSize, opts.patchPx);
+        else
+            nEdge = nEdge + countClamped(centroids, C.workSize, opts.patchPx);
+        end
 
         if opts.verbose && mod(k, 10) == 0
             fprintf('    %d/%d images  (%d pos / %d neg so far)\n', k, n, nPos, nNeg);
@@ -197,8 +245,9 @@ function D = buildCandidateDataset(opts)
     D.patchPx = opts.patchPx;
     D.threshSD = opts.threshSD;
     D.fragmentRejection = opts.fragmentRejection;
+    D.patchGeometry = opts.patchGeometry;
     D.nClampedAtEdge = nEdge;
-    D.patchGeometry = 'working scale (FOV normalised to 1536 px), via cutCandidatePatches';
+
 
     if opts.verbose
         fprintf('\n  candidate dataset: %s\n', opts.lesion);
