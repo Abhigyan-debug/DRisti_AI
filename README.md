@@ -171,19 +171,32 @@ Fundus Image → [1] Quality Assessment & Enhancement
 - Two README epidemiology figures need correcting; see
   [literature_benchmarks.md](docs/literature_benchmarks.md) §4.
 
-### Phase 1 — Image Quality & Enhancement Pipeline
-- [ ] Implement focus/illumination/FOV scoring functions
-- [ ] Build CLAHE + illumination normalization + denoising pipeline
-- [ ] Define reject/recapture logic and test on deliberately degraded images
-- [ ] Unit-test against a mixed-quality subset (good, borderline, bad)
+### Phase 1 — Image Quality & Enhancement Pipeline ✅ *thresholds in [docs/phase1_quality_baseline.md](docs/phase1_quality_baseline.md)*
+- [x] Implement focus/illumination/FOV scoring functions
+- [x] Build CLAHE + illumination normalization + denoising pipeline
+- [x] Define reject/recapture logic and test on deliberately degraded images
+      ([docs/phase1_degradation_study.md](docs/phase1_degradation_study.md))
+- [x] Unit-test against a mixed-quality subset — `tests/test_quality_metrics.m`
 
-### Phase 2 — Segmentation Modules
-- [ ] Optic disc & fovea localization (validate against IDRiD annotations)
-- [ ] Vessel segmentation (train/evaluate on DRIVE — target Dice/AUC benchmarks)
-- [ ] Microaneurysm detection pipeline (validate against IDRiD MA masks)
-- [ ] Exudate segmentation + hemorrhage classification
-- [ ] Neovascularization heuristic detector
-- [ ] Consolidate all lesion outputs into a single structured feature vector per image
+> Thresholds were **measured from 380 images**, not guessed. Note Phase 6 §4: the
+> gate does **not** improve grading accuracy — its justification is clinical.
+
+### Phase 2 — Segmentation Modules ⚠️ *built and measured; most channels fail their bar*
+- [x] Optic disc & fovea localization (validated against IDRiD annotations)
+- [x] Vessel segmentation — DRIVE **Dice 0.622** vs 0.828 U-Net benchmark.
+      ⚠️ scored on the *training* split; test GT is withheld in our copy (B2)
+- [x] Microaneurysm detection — validated, and it **does not work**: recall 0.221 /
+      precision 0.029 single-stage. Two-stage classifier raises precision to 0.054 —
+      still 10× below the display bar. **Suppressed from the report**
+- [x] Exudate + haemorrhage — haemorrhage precision 0.088 (suppressed).
+      Hard exudates **0.549 precision at k=3.0**, the one displayed channel
+- [x] Neovascularization heuristic — implemented, **never validated** (no ground truth)
+- [x] Consolidate into a structured feature vector — `extractLesionFeatures.m`,
+      contract in `config/lesion_features.json`
+
+> **This phase is honestly "done but weak".** Every channel carries its measured
+> recall/precision and a `reliable` flag; unreliable channels render as
+> "not validated", never as zero. Details: [docs/phase3_results.md](docs/phase3_results.md) §3e.
 
 ### Phase 3 — DR Severity Grading Model ✅ *complete; results in [docs/phase3_results.md](docs/phase3_results.md)*
 - [x] Baseline end-to-end CNN — ResNet-18 @ 640px. **Sens 90.3% / Spec 95.9%, AUC 0.9891**
@@ -202,24 +215,66 @@ Fundus Image → [1] Quality Assessment & Enhancement
 > costs 9.2pp specificity on APTOS for 0.7pp sensitivity. Correct the claim rather
 > than repeat it — details in [docs/phase3_results.md](docs/phase3_results.md).
 
-### Phase 4 — Explainability & Reporting
-- [ ] Implement Grad-CAM/Grad-CAM++ on the trained grading network
-- [ ] Correlate Grad-CAM activation regions with Module 2 lesion locations
-- [ ] Confidence calibration (Platt/isotonic)
-- [ ] Auto-generate the one-page annotated report (design for sub-30-second review)
-- [ ] Informal usability pass — simulate an ophthalmologist review workflow, time it
+### Phase 4 — Explainability & Reporting ✅ *(one item partial)*
+- [x] Grad-CAM on the trained grading network — `explainGrading.m`
+- [x] Correlate Grad-CAM with Module 2 lesion locations — **enrichment 1.51×** vs
+      expert masks. Above chance but **not strong corroboration**; do not claim
+      validated explainability
+- [x] Confidence calibration (Platt) — `models/calibrator.mat`. Fitted on APTOS;
+      the report states that basis rather than implying it generalises
+- [x] Auto-generate the one-page annotated report — `generate_clinical_report.m`,
+      self-contained HTML with the fundus/Grad-CAM image embedded
+- [~] **Informal usability pass — instrument built, no clinician timed.**
+      `usabilityPass.m` produces a stopwatch-ready review set and audits every
+      report (9/9 structural checks). It measured a **~38 s read-time floor** for
+      the critical path at 200 wpm — i.e. the sub-30 s target may not be met, and
+      the 30 s figure Module 5 assumes could be optimistic. **Needs a human.**
 
-### Phase 5 — Simulink Throughput Simulation
-- [ ] Model acquisition → upload → AI processing → review as a discrete-event/queuing system in Simulink
-- [ ] Parameterize with realistic rural bandwidth and staffing assumptions
-- [ ] Run scenario analysis for 100,000+ patients/year district target
-- [ ] Output: recommended camera/technician/compute/ophthalmologist ratios and bottleneck report
+### Phase 5 — Simulink Throughput Simulation ✅
+- [x] Model acquisition → upload → AI processing → review as a discrete-event/queuing system in Simulink
+- [x] Parameterize with realistic rural bandwidth and staffing assumptions
+- [x] Run scenario analysis for 100,000+ patients/year district target
+- [x] Output: recommended camera/technician/compute/ophthalmologist ratios and bottleneck report
 
-### Phase 6 — Integration, Validation & Benchmarking
-- [ ] Wire all 5 modules into a single MATLAB pipeline/app (App Designer front-end optional)
-- [ ] Full pipeline run on held-out Messidor-2 set
-- [ ] Compare integrated pipeline vs. single-technique baseline (Phase 3 baseline CNN) — quantify improvement
-- [ ] Document failure cases (poor-quality images, ambiguous grades) for transparency
+Results: **[docs/phase5_results.md](docs/phase5_results.md)**.
+
+**Measured:** AI service time **7.65 s/image on CPU** (the code had assumed
+0.120 s — a 64× gap). A GPU saves 0.2% of pipeline time and is *slower* for
+Grad-CAM, so **a PHC edge node does not need a GPU**. Minimum viable district =
+**6 cameras/technicians, 1 uplink, 1 compute node, 1 ophthalmologist**;
+**acquisition is the binding constraint**, not specialist review — confirmed by
+two independent methods.
+
+**Assumption-dependent:** every throughput figure rests on a **30 s clinician
+review time, which is a design target and has never been measured** — no
+clinician has been timed. Treat staffing numbers accordingly.
+
+**Per-site calibration is a deployment requirement.** Sensitivity is not one
+number: 90.3% is APTOS-internal, the same frozen threshold measured **31.2%** on
+Messidor-2 uncalibrated, and **90.0%** only after calibrating on ~200 local
+images. Calibration buys sensitivity by spending specificity (99.5% → 57.9%),
+which raises specialist load from ~9 to ~89 min/day — so the honest benefit of AI
+triage is **~2×**, not the ~10× an idealised classifier implies.
+
+### Phase 6 — Integration, Validation & Benchmarking ✅ *results in [docs/phase6_results.md](docs/phase6_results.md)*
+- [x] Wire all 5 modules into a single MATLAB pipeline — `src/runDrishtiSystem.m`
+      (Modules 1–4 per image; the measured service time feeds Module 5's district model).
+      Refuses to run on Messidor-2 in code, so the holdout cannot be spent twice by accident.
+- [x] Full pipeline run on held-out Messidor-2 — **already spent in Phase 3**
+      (2026-09-12, 1,748 images, thresholds frozen beforehand). **Not re-run**: rule 1
+      allows exactly one read, and it has happened. Sens **31.2%** / Spec 99.5% / AUC 0.8848.
+- [x] Compare integrated vs single-technique — **it is a regression, not an improvement**.
+      Module 1 gate + grader vs grader alone (APTOS, n=733): sensitivity **+0.67 pp**,
+      specificity **−9.20 pp**, AUC 0.9891 → 0.9010. The gate rejects images the grader
+      handles *better* than average (3.45% vs 6.67% error). Its justification is clinical,
+      not statistical.
+- [x] Document failure cases — the miss is **concentrated at grade 2**: 84.4% of moderate
+      NPDR missed (median score 0.042 vs threshold 0.403), while grades 3–4 are caught
+      (~17% missed, median 0.83/0.93). All 8 DME-only referable cases missed.
+
+> **The README's central claim — integrated beats single-technique — has now been tested
+> three ways and does not hold** (hybrid §3d, multi-domain §3c, quality gate §4). What
+> integration actually buys is explainability, a recapture path and deployability.
 
 ### Phase 7 — Demo, Docs & Pitch
 - [ ] Package a working prototype demo (sample images → report output, live or recorded)

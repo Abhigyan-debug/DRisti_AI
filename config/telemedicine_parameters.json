@@ -1,125 +1,191 @@
 {
   "_comment": "Module 5 (Simulink screening-throughput) input parameters. Owned by R3 (Abhigyat), consumed by R4 (Natik). Every parameter carries a 'confidence' tag: SOURCED = read from a cited primary source; DERIVED = computed from a sourced figure or from our own measured dataset; ASSUMED = a placeholder we chose, NOT evidence. The README risk table names unrealistic assumptions as a headline project risk - so ASSUMED values must appear as assumptions in the Phase 5 write-up, never as findings. Reasoning and citations: docs/telemedicine_parameters.md",
-  "_version": "1.0.0",
-  "_updated": "2026-09-11",
+  "_version": "1.2.0",
+  "_updated": "2026-09-12",
   "_owner": "R3 - clinical research",
-
   "demand": {
     "target_patients_per_year": {
-      "value": 100000, "unit": "patients/year", "confidence": "SOURCED",
+      "value": 100000,
+      "unit": "patients/year",
+      "confidence": "SOURCED",
       "source": "SIH problem statement - district-scale rollout target"
     },
     "operating_days_per_year": {
-      "value": 250, "unit": "days/year", "confidence": "ASSUMED",
+      "value": 250,
+      "unit": "days/year",
+      "confidence": "ASSUMED",
       "note": "6-day week less public holidays. Drives everything downstream - vary it in scenario analysis."
     },
     "images_per_patient": {
-      "value": 2, "unit": "images/patient", "confidence": "SOURCED",
+      "value": 2,
+      "unit": "images/patient",
+      "confidence": "SOURCED",
       "source": "Dey et al. 2025 (AIDRSS, Kolkata): 5,029 participants, 10,058 macula-centric images",
       "note": "One macula-centric field per eye. A 2-field protocol would double this."
     },
     "arrival_process": {
-      "value": "poisson", "confidence": "ASSUMED",
+      "value": "poisson",
+      "confidence": "ASSUMED",
       "note": "Walk-in screening camps are bursty, not Poisson. If SimEvents allows, test a batch-arrival variant - camps deliver 40-60 patients in a morning, which changes queue depth far more than the mean rate does."
     }
   },
-
   "acquisition": {
     "technician_time_per_patient_min": {
-      "value": 5.0, "unit": "minutes", "confidence": "ASSUMED",
+      "value": 5.0,
+      "unit": "minutes",
+      "confidence": "ASSUMED",
       "note": "Registration + positioning + two captures + retry. NOT sourced - the single most valuable parameter for R3 to replace with a real time-and-motion figure."
     },
     "vision_centre_catchment_population": {
-      "value": [50000, 70000], "unit": "people", "confidence": "SOURCED",
+      "value": [
+        50000,
+        70000
+      ],
+      "unit": "people",
+      "confidence": "SOURCED",
       "source": "Aravind Eye Care System vision centre model"
     },
     "vision_centre_catchment_radius_km": {
-      "value": [8, 10], "unit": "km", "confidence": "SOURCED",
+      "value": [
+        8,
+        10
+      ],
+      "unit": "km",
+      "confidence": "SOURCED",
       "source": "Aravind Eye Care System vision centre model"
     },
     "staff_per_centre": {
-      "value": {"vision_technician": 1, "community_health_worker": 1}, "confidence": "SOURCED",
+      "value": {
+        "vision_technician": 1,
+        "community_health_worker": 1
+      },
+      "confidence": "SOURCED",
       "source": "Aravind / LVPEI vision centre staffing model; technicians receive 2 years training plus 1 year supervision"
     }
   },
-
   "upload": {
     "image_size_mb": {
-      "value": 3.5, "unit": "MB", "confidence": "ASSUMED",
+      "value": 3.5,
+      "unit": "MB",
+      "confidence": "ASSUMED",
       "note": "Placeholder for a 4288x2848 JPEG (IDRiD's uniform resolution). REPLACE WITH A MEASUREMENT - once IDRiD is on a machine this is a one-liner; see docs/telemedicine_parameters.md section 4."
     },
     "national_avg_fixed_broadband_download_mbps": {
-      "value": 60.85, "unit": "Mbps", "confidence": "SOURCED",
+      "value": 60.85,
+      "unit": "Mbps",
+      "confidence": "SOURCED",
       "source": "National Broadband Mission 2.0, as of 2026-03-31",
       "note": "NATIONAL average, download. Not a rural PHC figure and not an upload figure - do not model with this directly."
     },
     "assumed_rural_phc_upload_mbps": {
-      "value": 5.0, "unit": "Mbps", "confidence": "ASSUMED",
+      "value": 5.0,
+      "unit": "Mbps",
+      "confidence": "ASSUMED",
       "note": "Upload is the binding constraint and no rural upload figure was found. Treat as a scenario axis, not a constant: sweep 1 / 5 / 20 Mbps and report where upload stops being the bottleneck."
     },
     "connectivity_fallback": {
-      "value": "store-and-forward", "confidence": "SOURCED",
+      "value": "store-and-forward",
+      "confidence": "SOURCED",
       "source": "Indian teleophthalmology deployments historically used VSAT (ISRO) satellite links for rural image transfer",
       "note": "Model a store-and-forward path - images queue locally and sync in batches. This makes the system robust to an outage rather than dependent on live bandwidth, and is the realistic rural design."
     }
   },
-
   "ai_processing": {
     "inference_time_per_image_s": {
-      "value": null, "unit": "seconds", "confidence": "PENDING",
-      "note": "Unknown until Phase 3 produces a model. Measure on the dev GPU (RTX 5050) and on a CPU-only node - the CPU number is the one that matters for a PHC deployment."
+      "value": 7.65,
+      "unit": "seconds",
+      "confidence": "MEASURED",
+      "device": "CPU",
+      "source": "simulink/benchmarkInferenceTime.m, n=10 IDRiD images (2 warm-up discarded), MATLAB R2026a",
+      "protocol": "Wall-clock, sequential, single process, one image at a time. Median; mean 10.15 s, sd 4.76 s. An independent earlier run gave 7.76 s (agreement within ~1.5%). Per-image SERVICE time for the FULL deployed pipeline, not a CNN forward pass.",
+      "breakdown": {
+        "full_pipeline_s": 7.65,
+        "quality_gate_s": 2.59,
+        "grade_and_explain_s": 4.74,
+        "grading_only_s": 3.19
+      },
+      "device_note": "THIS IS THE CPU NUMBER THE CONTRACT ASKED FOR. explainGrading.m builds a plain CPU dlarray, so predict() executes on the CPU even though a GPU is present - an earlier revision of this entry mislabelled the same measurement 'dev GPU RTX 5050' on the strength of the GPU merely existing. Measured directly: CNN forward pass CPU 0.050 s vs GPU 0.034 s; forward+Grad-CAM CPU 0.514 s vs GPU 0.732 s (GPU SLOWER - transfer overhead exceeds compute for a model this small).",
+      "deployment_implication": "A PHC edge node does NOT need a GPU. The pipeline is CPU-bound in classical CV (quality gate + Module 2), not in the network: moving the CNN to a GPU would save ~0.016 s of 7.65 s (0.2%). Edge feasibility now rests on whether ~7.7 s/image/node is acceptable, not on GPU availability.",
+      "note": "REPLACES the 0.120 s placeholder in simulink/screening_params.m, which was a CNN forward pass and understated the deployed pipeline by ~64x. grading_only_s is the same pipeline with Module 2 and Grad-CAM disabled (explainGrading computeCam=false): a deployable configuration trading the heatmap and lesion evidence for 2.4x throughput."
     },
     "quality_reject_rate": {
-      "value": 0.109, "unit": "fraction", "confidence": "SOURCED",
+      "value": 0.109,
+      "unit": "fraction",
+      "confidence": "SOURCED",
       "source": "Dey et al. 2025 (AIDRSS): 547/5,029 (10.9%) excluded for image quality - poor illumination, motion artifacts",
       "comparators": {
-        "idx_dr_field_imageability": {"value": 0.039, "source": "Abramoff et al. 2018 - 96.1% imageability in the FDA pivotal trial"},
-        "messidor2_curated": {"value": 0.0017, "source": "Gulshan et al. 2016 - 3 of 1,748 ungradable"}
+        "idx_dr_field_imageability": {
+          "value": 0.039,
+          "source": "Abramoff et al. 2018 - 96.1% imageability in the FDA pivotal trial"
+        },
+        "messidor2_curated": {
+          "value": 0.0017,
+          "source": "Gulshan et al. 2016 - 3 of 1,748 ungradable"
+        }
       },
       "note": "KEY MODELLING INSIGHT: field reject rates (3.9-10.9%) are 20-60x the curated-dataset rate (0.2%). Module 5 must model a RECAPTURE LOOP - a rejected image sends the patient back to acquisition, not out of the system. Ignoring it understates technician load by ~10%."
     }
   },
-
   "review": {
     "ophthalmologist_review_time_s": {
-      "value": 30, "unit": "seconds", "confidence": "ASSUMED",
+      "value": 30,
+      "unit": "seconds",
+      "confidence": "ASSUMED",
       "note": "This is our Module 4 DESIGN TARGET, not an observed figure. Using it as a model input makes the throughput result conditional on Module 4 hitting its target - state that. R4 should measure the real number with a stopwatch in Phase 4 and feed it back."
     },
     "referral_rate": {
-      "value": 0.0454, "unit": "fraction", "confidence": "DERIVED",
+      "value": 0.0454,
+      "unit": "fraction",
+      "confidence": "DERIVED",
       "source": "Dey et al. 2025 (AIDRSS) severity breakdown: DR2 4.40% + DR3/DR4 0.14%, recomputed against OUR referable definition (ICDR >= 2)",
       "note": "The paper's own headline 'referable' rate is 0.14% because it counts only DR3-DR4. Recomputed here for ICDR >= 2. DME-only referrals are NOT included - so this is a floor. See docs/clinical_definitions.md section 3."
     },
     "dr_prevalence_general_population": {
-      "value": 0.137, "unit": "fraction", "confidence": "SOURCED",
+      "value": 0.137,
+      "unit": "fraction",
+      "confidence": "SOURCED",
       "source": "Dey et al. 2025 (AIDRSS), Kolkata, n=4,482 gradable (95% CI 12.6-14.8%)",
-      "comparator": {"value": 0.125, "source": "SMART India, Lancet Global Health 2022 (95% CI 11.0-14.2%)"}
+      "comparator": {
+        "value": 0.125,
+        "source": "SMART India, Lancet Global Health 2022 (95% CI 11.0-14.2%)"
+      }
     },
     "dr_prevalence_elevated_blood_glucose": {
-      "value": 0.382, "unit": "fraction", "confidence": "SOURCED",
+      "value": 0.382,
+      "unit": "fraction",
+      "confidence": "SOURCED",
       "source": "Dey et al. 2025 (AIDRSS), 95% CI 35.5-40.9%",
       "note": "Scenario lever: screening a diabetic-only cohort roughly triples yield per image and changes the optimal staffing mix."
     },
     "referred_onward_to_base_hospital": {
-      "value": 0.10, "unit": "fraction", "confidence": "SOURCED",
+      "value": 0.1,
+      "unit": "fraction",
+      "confidence": "SOURCED",
       "source": "Aravind Eye Care System: 'over 90% can be fully treated on-site and less than 10% are referred to the base hospital'",
       "note": "Second-stage referral, downstream of our AI decision. Relevant to the district capacity claim, not to image throughput."
     }
   },
-
   "workforce_context": {
     "ophthalmologists_per_million_india": {
-      "value": 15, "unit": "per million", "confidence": "SOURCED-ABSTRACT",
+      "value": 15,
+      "unit": "per million",
+      "confidence": "SOURCED-ABSTRACT",
       "source": "Online Journal of Public Health Informatics 2024;16:e50921 (South India workforce survey), doi:10.2196/50921",
       "note": "Read from the abstract via search; full text was not retrievable (publisher returned empty body). VERIFY BEFORE SLIDE USE."
     },
     "ophthalmologists_per_million_developed_countries": {
-      "value": 38.6, "unit": "per million", "confidence": "SOURCED-ABSTRACT",
+      "value": 38.6,
+      "unit": "per million",
+      "confidence": "SOURCED-ABSTRACT",
       "source": "same"
     },
     "district_ratio_range": {
-      "value": {"best": "1:6309 (Hyderabad district)", "worst": "1:193822 (Nalgonda district)"},
-      "confidence": "SOURCED-ABSTRACT", "source": "same",
+      "value": {
+        "best": "1:6309 (Hyderabad district)",
+        "worst": "1:193822 (Nalgonda district)"
+      },
+      "confidence": "SOURCED-ABSTRACT",
+      "source": "same",
       "note": "This 30x within-state spread is a stronger argument for the project than any national average. See docs/telemedicine_parameters.md section 5."
     }
   }

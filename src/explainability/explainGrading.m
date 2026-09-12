@@ -37,6 +37,12 @@ function E = explainGrading(img, opts)
         opts.modelFile (1,:) char = ''
         opts.threshold (1,1) double = NaN
         opts.runModule2 (1,1) logical = true
+        % Grad-CAM is ~the same cost again as the forward pass. A deployment
+        % that only needs a referral decision (no heatmap, no lesion evidence)
+        % can skip it; BENCHMARKINFERENCETIME measures what that saves, and
+        % Module 5 sizes compute from the result. Defaults true so every
+        % existing caller is unchanged.
+        opts.computeCam (1,1) logical = true
     end
 
     cfg = drishti_paths();
@@ -80,6 +86,18 @@ function E = explainGrading(img, opts)
     % but the clinically meaningful question - why is this referable - still
     % has an answer. Falling back to the argmax would explain an arbitrary one
     % of the three.
+    if ~opts.computeCam
+        % No heatmap requested. Return explicitly empty rather than a zero map:
+        % a zero CAM would flow into buildEvidence and be scored as "the model
+        % attended nowhere", which is a claim, not an absence.
+        E.cam = [];
+        E.overlay = [];
+        E.features = struct();
+        E.evidence = table();
+        E.agreement = NaN;
+        return
+    end
+
     try
         camSmall = gradCAM(net, X, gi);
         camSmall = double(gather(extractdata(camSmall)));

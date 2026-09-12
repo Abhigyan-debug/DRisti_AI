@@ -40,8 +40,23 @@ function mdlName = build_throughput_model(outputPath)
     set_param(mdlName, 'StopTime', '480'); % 480 minutes = 8 hour operational shift
     set_param(mdlName, 'Solver', 'VariableStepAuto');
 
-    % Check SimEvents license availability
-    hasSimEvents = license('test', 'simevents') && ~isempty(ver('simevents'));
+    % Is SimEvents actually USABLE? License and ver() are not enough.
+    %
+    % On this machine ver('simevents') reports SimEvents 26.1 and
+    % license('test','simevents') returns 1, yet there is no toolbox/simevents
+    % directory and every block path resolves to nothing - the product is
+    % registered and licensed but not installed. The old check passed on
+    % ver+license alone, took the SimEvents branch, and died on the first
+    % add_block with "no block named simeventsgenerators/Entity Generator".
+    % check_environment.m reports the same false [ok] for the same reason.
+    %
+    % The only honest test is whether a block can actually be loaded.
+    hasSimEvents = simeventsUsable();
+
+    % Put the contract's numbers in the model workspace BEFORE adding blocks
+    % that reference them by name, so the saved .slx carries its parameters
+    % with it and stays tied to config/telemedicine_parameters.json.
+    seedModelWorkspace(mdlName);
 
     if hasSimEvents
         fprintf('  SimEvents detected: Building discrete-event queuing topology...\n');
@@ -147,8 +162,10 @@ function populate_queue_subsystem(subPath, name, meanServiceMin, numServers)
         'Position', [440, 90, 470, 110]);
 
     % Queue Length Out
-    add_block('simulink/Sinks/Out2', [subPath, '/Queue_Length_Out'], ...
-        'Position', [440, 150, 470, 170]);
+    % There is no 'Out2' block - every outport is Sinks/Out1 and its position
+    % in the port list is set by the 'Port' parameter.
+    add_block('simulink/Sinks/Out1', [subPath, '/Queue_Length_Out'], ...
+        'Port', '2', 'Position', [440, 150, 470, 170]);
 
     % Connect subsystem internal lines
     add_line(subPath, 'Arrival_Rate/1', 'Net_Flow/1');
@@ -169,9 +186,12 @@ function populate_quality_gate_subsystem(subPath)
     add_block('simulink/Sources/In1', [subPath, '/Acquired_Images_In'], ...
         'Position', [40, 80, 70, 100]);
 
-    % Sourced pass rate = 1 - permanentRejectRate (98% pass to upload)
+    % Pass rate resolves from the model workspace (see seedModelWorkspace), so
+    % the block tracks config/telemedicine_parameters.json instead of freezing
+    % a literal into the .slx. A hardcoded 0.98 here would silently disagree
+    % with the contract the moment R3 revises the reject rate.
     add_block('simulink/Math Operations/Gain', [subPath, '/Valid_Screening_Pass_Gain'], ...
-        'Gain', '0.98', 'Position', [140, 75, 200, 105]);
+        'Gain', 'qualityPassRate', 'Position', [140, 75, 200, 105]);
 
     add_block('simulink/Sinks/Out1', [subPath, '/Passed_To_Upload'], ...
         'Position', [260, 80, 290, 100]);
@@ -213,4 +233,72 @@ function build_simevents_topology(mdl)
     add_line(mdl, 'AI_GPU_Server/1', 'Ophthalmologist_Triage_Queue/1');
     add_line(mdl, 'Ophthalmologist_Triage_Queue/1', 'Ophthalmologist_Review_Server/1');
     add_line(mdl, 'Ophthalmologist_Review_Server/1', 'Completed_Screenings_Sink/1');
+end
+
+
+% -------------------------------------------------------------------------
+% Helper: is SimEvents genuinely usable (installed), not merely licensed?
+% -------------------------------------------------------------------------
+function tf = simeventsUsable()
+%SIMEVENTSUSABLE  True only if a SimEvents block can actually be resolved.
+%
+%   Probes the library rather than trusting ver()/license(), which both report
+%   success for a product that is registered but absent from disk.
+
+    tf = false;
+    if ~license('test', 'simevents') || isempty(ver('simevents'))
+        return
+    end
+    try
+        load_system('simevents');
+        tf = ~isempty(find_system('simevents', 'SearchDepth', 3, ...
+                                  'Type', 'Block', 'Name', 'Entity Generator'));
+    catch
+        tf = false;
+    end
+end
+
+
+% -------------------------------------------------------------------------
+% Helper: seed the model workspace from the parameter contract
+% -------------------------------------------------------------------------
+function seedModelWorkspace(mdl)
+%SEEDMODELWORKSPACE  Bind the .slx to config/telemedicine_parameters.json.
+%
+%   Block parameters reference these names rather than literals, so opening the
+%   saved model shows the same numbers Phase 5's analysis ran on. Without this
+%   the .slx is a topology picture whose gains happen to be whatever was typed
+%   when it was generated - which is how a diagram and a result drift apart.
+%
+%   Service RATES are per minute, because the model's time unit is minutes
+%   (StopTime 480 = one 8-hour shift).
+
+    p = screening_params();
+    ws = get_param(mdl, 'ModelWorkspace');
+
+    % Demand
+    assignin(ws, 'patientsPerDay',    p.targetPatientsPerDay);
+    assignin(ws, 'arrivalRatePerMin', p.targetPatientsPerDay / (p.operatingHoursPerDay * 60));
+
+    % Stage 1 acquisition: cameras in parallel, each serving 1/examTime per min
+    assignin(ws, 'acquisitionRatePerMin', p.totalCameras / p.meanExamMinutes);
+
+    % Stage 2 quality gate
+    assignin(ws, 'qualityPassRate', 1 - p.permanentRejectRate);
+    assignin(ws, 'recaptureRate',   p.initialRejectRate);
+
+    % Stage 3 upload: MB per patient over the PHC uplink
+    uploadMinPerPatient = (p.totalPayloadMB * 8 * 1024) / p.uplinkBandwidthKbps / 60;
+    assignin(ws, 'uploadMinPerPatient', uploadMinPerPatient);
+    assignin(ws, 'uploadRatePerMin',    p.numPHCs / max(uploadMinPerPatient, eps));
+
+    % Stage 4 AI: MEASURED service time (see benchmarkInferenceTime.m)
+    aiMinPerPatient = p.aiTotalLatencySec / 60;
+    assignin(ws, 'aiMinPerPatient', aiMinPerPatient);
+    assignin(ws, 'aiRatePerMin',    p.numComputeNodes / max(aiMinPerPatient, eps));
+
+    % Stage 5 review
+    assignin(ws, 'reviewMinPerPatient', p.meanReviewSeconds / 60);
+    assignin(ws, 'reviewRatePerMin', ...
+        p.numOphthalmologists / max(p.meanReviewSeconds / 60, eps));
 end

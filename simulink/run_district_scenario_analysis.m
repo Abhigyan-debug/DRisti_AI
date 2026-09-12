@@ -86,23 +86,50 @@ function report = run_district_scenario_analysis(savePlots)
     report.edgeResults             = resEdge;
     report.clinicianSweepResults   = ophthSweep;
 
+    % ---- recommendation ---------------------------------------------------
+    % This block used to echo the ASSUMED inputs back as if they were findings:
+    % it printed 44 cameras / 3 ophthalmologists / 2 GPUs (exactly what was fed
+    % in), a hardcoded "~0.48 s/patient" left over from the 0.120 s CNN
+    % placeholder, and named a stage sitting at 13.6% utilisation as the
+    % "Primary Bottleneck". A resource that is 86% idle is not a bottleneck, and
+    % a recommendation that returns its own input is not a recommendation.
+    %
+    % Sizing now comes from RECOMMEND_DISTRICT_CONFIGURATION, which solves for
+    % the SMALLEST configuration meeting the utilisation ceiling.
+    rec = recommend_district_configuration('verbose', false);
+    report.rightSizing = rec;
+    og = rec.ophthalmologists.contract_general;
+    od = rec.ophthalmologists.diabetic_cohort;
+
     fprintf('=================================================================\n');
     fprintf('  RECOMMENDED DISTRICT DEPLOYMENT SIZING (100,000 Patients/Year)\n');
     fprintf('=================================================================\n');
-    fprintf('  • Acquisition Units     : %d Cameras + %d Technicians across 40 PHCs + 4 Vans\n', ...
-        report.recommendedCameras, report.recommendedTechnicians);
-    fprintf('  • Central Compute       : %d GPU Nodes (Server inference: ~0.48 s / patient)\n', ...
-        report.recommendedComputeNodes);
-    fprintf('  • Tele-Ophthalmologists : %d Dedicated Specialists (<30s review workflow)\n', ...
-        report.recommendedOphthalmologists);
-    fprintf('  • Clinician Utilization : %.1f%% (Safe operating zone: 60-80%%)\n', ...
-        resBaseline.ophthalmologistUtilization * 100);
-    fprintf('  • Expected Same-Day TAT : Median %.1f min (95th percentile: %.1f min)\n', ...
-        resBaseline.medianTAT, resBaseline.p95TAT);
-    fprintf('  • Same-Day SLA Delivery : %.1f%% of patients receive report before leaving PHC\n', ...
-        resBaseline.slaWithin2HoursPct);
-    fprintf('  • Primary Bottleneck    : %s (%.1f%% load)\n', ...
-        resBaseline.bottleneckStage, resBaseline.bottleneckUtilization * 100);
+    fprintf('  MINIMUM viable configuration (<=%.0f%% utilisation), NOT the\n', 100*rec.maxUtilisation);
+    fprintf('  over-provisioned configuration assumed in the scenarios above:\n');
+    fprintf('    Cameras + technicians : %d   (1 technician per camera)\n', rec.cameras);
+    fprintf('    PHC uplinks           : %d\n', rec.uplinks);
+    fprintf('    AI compute nodes      : %d   (MEASURED %.2f s/image x %d = %.1f s/patient)\n', ...
+        rec.computeNodes, rec.assumptions.aiSecondsPerImage, ...
+        rec.assumptions.imagesPerPatient, rec.assumptions.aiMinutesPerPatient*60);
+    fprintf('    Ophthalmologists      : %d   (site-CALIBRATED operating point)\n', ...
+        max(og.calibrated.count, od.calibrated.count));
+    fprintf('      specialist load %.0f-%.0f min/day at the only SAFE operating point\n', ...
+        og.calibrated.minPerDay, od.calibrated.minPerDay);
+    fprintf('      (90.0%%/57.9%%, per-site calibrated), vs %.0f min/day reading every\n', ...
+        og.preAiBaselineMinPerDay);
+    fprintf('      image: a %.1f-%.1fx reduction. NOT the ~10x that an idealised\n', ...
+        od.calibrated.reductionVsBaseline, og.calibrated.reductionVsBaseline);
+    fprintf('      classifier (referral = prevalence) would imply.\n');
+    fprintf('    BINDING CONSTRAINT    : %s\n', rec.bindingConstraint);
+    fprintf('\n  Same-day TAT (baseline run): median %.1f min, p95 %.1f min, SLA<2h %.1f%%\n', ...
+        resBaseline.medianTAT, resBaseline.p95TAT, resBaseline.slaWithin2HoursPct);
+    fprintf('  PER-SITE CALIBRATION IS A DEPLOYMENT REQUIREMENT. Uncalibrated, the\n');
+    fprintf('  same threshold measured 31.2%% sensitivity on Messidor-2 and would\n');
+    fprintf('  auto-clear ~%.0f of the %.0f referable patients seen per day.\n', ...
+        rec.triageSafetyNote.missedReferablePerDay_external, ...
+        rec.patientsPerDay * 0.16);
+    fprintf('  ALL THROUGHPUT FIGURES ABOVE ARE ASSUMPTION-DEPENDENT (30 s review\n');
+    fprintf('  time is a design target, not a measurement). See docs/phase5_results.md.\n');
     fprintf('=================================================================\n\n');
 end
 

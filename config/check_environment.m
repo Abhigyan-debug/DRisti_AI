@@ -11,16 +11,26 @@ function [ok, report] = check_environment()
 %
 %   See also SETUP_DRISHTI, DRISHTI_PATHS.
 
-    % name, required/optional, first phase that needs it
+    % name, licence feature, required/optional, first phase that needs it,
+    % and a PROBE: a toolbox folder under matlabroot whose absence proves the
+    % product is not actually installed.
+    %
+    % The probe exists because licence checks are not evidence of installation.
+    % SimEvents on this machine reports ver() = 26.1 AND passes both
+    % license('test') and license('checkout'), while toolbox/simevents does not
+    % exist on disk - so this function printed a green [ok] for a product whose
+    % every block path fails to resolve. Phase 5's model builder took the
+    % SimEvents branch on the strength of that [ok] and crashed. A readiness
+    % check that reports ready for something unusable is worse than no check.
     specs = {
-        'Image Processing Toolbox',              'image_toolbox',        true,  'Phase 1'
-        'Computer Vision Toolbox',               'video_and_image_blockset', true,  'Phase 2'
-        'Deep Learning Toolbox',                 'neural_network_toolbox', true,  'Phase 2'
-        'Statistics and Machine Learning Toolbox','statistics_toolbox',  true,  'Phase 3'
-        'Simulink',                              'simulink',             true,  'Phase 5'
-        'Medical Imaging Toolbox',               'medical_imaging_toolbox', false, 'Phase 2 (optional)'
-        'Parallel Computing Toolbox',            'distrib_computing_toolbox', false, 'Phase 3 (GPU training)'
-        'SimEvents',                             'simevents',            false, 'Phase 5 (queuing blocks)'
+        'Image Processing Toolbox',              'image_toolbox',        true,  'Phase 1', 'images'
+        'Computer Vision Toolbox',               'video_and_image_blockset', true,  'Phase 2', 'vision'
+        'Deep Learning Toolbox',                 'neural_network_toolbox', true,  'Phase 2', 'nnet'
+        'Statistics and Machine Learning Toolbox','statistics_toolbox',  true,  'Phase 3', 'stats'
+        'Simulink',                              'simulink',             true,  'Phase 5', 'simulink'
+        'Medical Imaging Toolbox',               'medical_imaging_toolbox', false, 'Phase 2 (optional)', 'medical'
+        'Parallel Computing Toolbox',            'distrib_computing_toolbox', false, 'Phase 3 (GPU training)', 'parallel'
+        'SimEvents',                             'simevents',            false, 'Phase 5 (queuing blocks)', 'simevents'
     };
 
     name    = strings(0, 1);
@@ -37,6 +47,9 @@ function [ok, report] = check_environment()
         isReq   = specs{k, 3};
         tbPhase = specs{k, 4};
 
+        probeDir = '';
+        if size(specs, 2) >= 5, probeDir = specs{k, 5}; end
+
         installed = license('test', feature) == 1;
         if installed
             % license('test') can pass for an uninstalled product; confirm we
@@ -49,6 +62,12 @@ function [ok, report] = check_environment()
             end
         else
             st = "MISSING";
+        end
+
+        % Licensed is not installed. Verify the product is actually on disk.
+        if st == "ok" && ~isempty(probeDir) && ...
+                ~isfolder(fullfile(matlabroot, 'toolbox', probeDir))
+            st = "NOT INSTALLED";
         end
 
         if isReq && st ~= "ok"
@@ -64,6 +83,7 @@ function [ok, report] = check_environment()
         switch st
             case "ok",         mark = 'ok     ';
             case "no license", mark = 'LICENCE';
+            case "NOT INSTALLED", mark = 'NOT INST';
             otherwise,         mark = 'MISSING';
         end
         fprintf('    [%s] %-42s %-8s  %s\n', mark, tbName, req, tbPhase);
