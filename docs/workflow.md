@@ -148,11 +148,8 @@ runtests('tests')                     % 57 cases; 24 of them never yet run
 ```
 
 ```bash
-python tools/verify_setup.py          # must stay green
-python tools/check_claims.py --strict # no banned or superseded numbers in the repo
-python tools/test_check_claims.py     # ...and the checker itself still catches them
-python tools/verify_freeze.py         # no pre-registered contract has moved
-python tools/test_verify_freeze.py    # ...and that check still detects tampering
+python tools/check_all.py             # all six checks below, one verdict
+python tools/check_all.py --skip-setup # same, on a machine with no datasets
 git status --short -- data/ models/ results/ reports/ webapp/jobs/   # must be empty
 ```
 

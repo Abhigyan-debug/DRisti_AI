@@ -4,7 +4,11 @@ function R = evaluateMessidor2(opts)
 %   R = EVALUATEMESSIDOR2() scores the frozen grader against the Krause et al.
 %   adjudicated reference standard for Messidor-2.
 %
-%   ⚠️  THIS IS THE HELD-OUT SET. Running it is spending it.
+%   ⚠️  THIS IS THE HELD-OUT SET. Running it is spending it - AND IT IS ALREADY
+%   SPENT. It was read once on 2026-09-12: Sens 31.2%, Spec 99.5%, AUC 0.8848.
+%   This function now refuses to run while results/messidor2_external_validation.mat
+%   exists. Analyse that run with ANALYSEFAILURECASES, which reads the saved
+%   per-image scores and performs no inference.
 %
 %   The operating-point thresholds MUST already be frozen (they are chosen in
 %   evaluateGrader on the APTOS validation split and written to
@@ -39,6 +43,9 @@ function R = evaluateMessidor2(opts)
         opts.modelFile (1,:) char = ''
         opts.confirm (1,1) logical = false
         opts.limit (1,1) double = Inf
+        % Deliberately long and unpleasant to type. It should be impossible to
+        % pass this by habit or by copying a command from a chat log.
+        opts.rerunAfterRetraining (1,1) logical = false
     end
 
     cfg = drishti_paths();
@@ -47,6 +54,36 @@ function R = evaluateMessidor2(opts)
         error('drishti:heldOutGuard', ...
             ['Messidor-2 is the held-out benchmark and is evaluated ONCE.\n' ...
              'Confirm deliberately:  evaluateMessidor2(''confirm'', true)']);
+    end
+
+    % ---- the shot is already spent ---------------------------------------
+    % The confirm flag above was written BEFORE the one shot was taken, when it
+    % still meant "are you sure you want to spend this?". It was spent on
+    % 2026-09-12, so on its own that flag now means nothing: a second
+    % confirm:true would quietly read the benchmark again and the
+    % external-validation claim would stop being true with no error and no
+    % failing test.
+    %
+    % A held-out set is not spent by intent, it is spent by ACCESS. So the
+    % refusal is tied to evidence that the read already happened - the saved
+    % result - rather than to anyone remembering that it did.
+    spentFile = fullfile(cfg.resultsDir, 'messidor2_external_validation.mat');
+    if isfile(spentFile) && ~opts.rerunAfterRetraining
+        error('drishti:holdoutAlreadySpent', ...
+            ['Messidor-2 has ALREADY been read (2026-09-12): Sens 31.2%%, ' ...
+             'Spec 99.5%%, AUC 0.8848 at the frozen threshold.\n' ...
+             'The result is in %s.\n\n' ...
+             'Do not read it again. To analyse that run - failure modes, ' ...
+             'per-grade misses, calibration demonstrations - use ' ...
+             'analyseFailureCases, which reads the SAVED per-image scores and ' ...
+             'performs no inference.\n\n' ...
+             'Re-running is only defensible for a genuinely new model whose ' ...
+             'thresholds were frozen without reference to this set, and it is ' ...
+             'a second external validation, not a repeat of the first: report ' ...
+             'both. If that is really what you are doing, pass ' ...
+             '''rerunAfterRetraining'', true AND move the existing result ' ...
+             'aside first, so the record of the first read is not overwritten.'], ...
+            spentFile);
     end
 
     % ---- frozen thresholds, or refuse ------------------------------------

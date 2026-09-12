@@ -64,6 +64,14 @@ function out = runDrishtiPipeline(imagePath, opts)
     tAll = tic;
 
     if ischar(imagePath) || isstring(imagePath)
+        % Guard BEFORE the read, not after. RUNDRISHTISYSTEM already checks the
+        % batch it is about to process, but this function is a public entry
+        % point in its own right - "image in, screening decision out" - and a
+        % direct call with a Messidor-2 path reached IMREAD with nothing in the
+        % way. The holdout is destroyed silently: no error, no failing test,
+        % just a headline claim that quietly stops being true. Re-checking here
+        % costs one string comparison and closes the last unguarded path.
+        assertNotHoldout(imagePath);
         img = imread(imagePath);
         [~, nameOnly] = fileparts(char(imagePath));
     else
