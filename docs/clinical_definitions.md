@@ -164,7 +164,7 @@ Under our definition, and under IDx-DR's and Gulshan's, moderate NPDR (their DR2
 positive class about thirty times smaller than ours.
 
 The result is not fraudulent and the paper states its definition plainly. But it is
-a live demonstration of the project rules hard rule 3: **a sensitivity
+a live demonstration of project hard rule 3: **a sensitivity
 figure without its positive-class definition is not a number.** Two systems
 reporting "100% sensitivity for referable DR" can differ by a factor of thirty in
 what they actually detect.

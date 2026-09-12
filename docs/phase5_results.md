@@ -100,7 +100,7 @@ recommendation.
 
 ## 3. One parameter contract, not two
 
-`config/telemedicine_parameters.json` is named in the project rules file as *the* Module 5
+`config/telemedicine_parameters.json` is designated as *the* Module 5
 contract and tags every value SOURCED / DERIVED / ASSUMED.
 `simulink/screening_params.m` had been keeping its own copy, and the two had
 drifted:

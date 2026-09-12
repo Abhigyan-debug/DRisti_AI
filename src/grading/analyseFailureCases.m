@@ -6,7 +6,7 @@ function R = analyseFailureCases(opts)
 %   ("document failure cases ... for transparency").
 %
 %   ⚠️ THIS PERFORMS NO INFERENCE AND RE-READS NO IMAGES.
-%   project rule 1: "Messidor-2 is touched exactly ONCE". That read happened
+%   Project rule 1: "Messidor-2 is touched exactly ONCE". That read happened
 %   on 2026-09-12 and is recorded in results/messidor2_external_validation.mat,
 %   which stores the per-image scores and truth labels. Analysing that saved
 %   table is not a second touch - nothing is re-scored, no threshold moves, and

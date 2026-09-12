@@ -93,7 +93,7 @@
   },
 
   "reporting_rules": {
-    "_comment": "project hard rule 3 - every reported metric carries its evaluation protocol.",
+    "_comment": "Project hard rule 3 - every reported metric carries its evaluation protocol.",
     "required_with_every_metric": ["dataset and split", "endpoint name from this file", "the DME encoding used for that dataset (see dme_encoding)", "operating point name and numeric threshold", "whether ungradable images were excluded or counted as positive", "confidence interval and method"],
     "dme_label_availability": {
       "aptos2019": "none - DR grade only. Secondary endpoint only.",

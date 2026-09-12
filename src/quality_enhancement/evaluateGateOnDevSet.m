@@ -26,7 +26,7 @@ function results = evaluateGateOnDevSet(opts)
 %   ---------------------
 %   None of these three corpora carry independent gradability labels, so this
 %   function measures the gate's decision DISTRIBUTION, not its accuracy. Real
-%   calibration needs labelled gradability - see docs/PROJECT_STATUS.md.
+%   calibration needs labelled gradability, which this corpus does not carry.
 %
 %   See also GATEIMAGE, CALIBRATEQUALITYTHRESHOLDS.
 

@@ -53,7 +53,7 @@ gets touched a second time by accident. Verified: the guard fires.
 
 ## 3. Messidor-2: the one-shot was already spent
 
-project rule 1 allows Messidor-2 to be read **exactly once**. That read
+Project rule 1 allows Messidor-2 to be read **exactly once**. That read
 happened on **2026-09-12** during Phase 3 — 1,748 images, 4 ungradable, 1,744
 scored, thresholds frozen beforehand — and it was the *full* pipeline, not the
 grader alone (the quality gate produced the 4 ungradable, and a

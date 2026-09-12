@@ -122,7 +122,7 @@ end
 function guardHoldout(files)
 %GUARDHOLDOUT  Refuse to screen the held-out external benchmark.
 %
-%   project rule 1 makes Messidor-2 a one-shot, and it was spent on
+%   Project rule 1 makes Messidor-2 a one-shot, and it was spent on
 %   2026-09-12. A convenience entry point that will happily batch-run over any
 %   folder is exactly how a holdout gets touched a second time by accident, so
 %   the check lives in the code rather than in a reader's memory.

@@ -118,7 +118,7 @@ publishable finding about heatmap evaluation, not a failure to hide.
 
 **Reporting.** n, reviewer's qualification and years of experience, blinding as
 actually executed, all refusals/exclusions, every CI. Per
-the project rules hard rule 3, the protocol travels with the number.
+project hard rule 3, the protocol travels with the number.
 
 ---
 
