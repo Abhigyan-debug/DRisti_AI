@@ -55,6 +55,11 @@ DRishti_AI/
 | `src/segmentation/validateLesionDetectors.m` | measures against the frozen bar |
 | `src/app/plainLanguageReport.m` | translation without promoting hedges into claims |
 | `src/explainability/buildReportData.m` | withheld channels render as "not validated", never 0 |
+| `src/grading/evaluateMessidor2.m` | refuses while the saved result exists — the shot is spent |
+| `src/grading/buildSiteCalibration.m` | checks fit/eval disjointness, never assumes it |
+| `tools/check_claims.py` | no banned or superseded figure, anywhere |
+| `tools/verify_freeze.py` | the pre-registration chain still hashes as recorded |
+| `tools/test_holdout_guard.py` | every entry point still guards the spent benchmark |
 
 ---
 
@@ -71,6 +76,8 @@ DRishti_AI/
 | `lesion_features.json` | the Phase 2 output contract | ✅ |
 | `telemedicine_parameters.json` | Module 5 inputs, tagged SOURCED/DERIVED/ASSUMED | ✅ |
 | `aptos_split.json` | committed split indices | ✅ |
+| `frozen_artifacts.json` | the pre-registration manifest — what was frozen, when, and its hash | ✅ |
+| `claim_rules.json` | banned + superseded figures, machine-checkable | ✅ |
 | `local_paths.json` | **per-machine**, git-ignored | ❌ |
 
 ---
