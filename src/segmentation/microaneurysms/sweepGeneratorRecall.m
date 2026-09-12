@@ -15,6 +15,9 @@ function R = sweepGeneratorRecall(opts)
         opts.lesion (1,:) char {mustBeMember(opts.lesion,{'microaneurysms','haemorrhages'})} = 'microaneurysms'
         opts.threshSDs (1,:) double = [0.75 1.0 1.25 1.5 2.0]
         opts.limit (1,1) double = Inf
+        % Passed through so the sweep measures the ceiling of the SAME
+        % generator configuration the rebuild will then build patches from.
+        opts.fragmentRejection (1,1) logical = true
     end
 
     cfg = drishti_paths();
@@ -49,7 +52,8 @@ function R = sweepGeneratorRecall(opts)
         recall = nan(n,1); nCand = nan(n,1); nTrue = nan(n,1);
         for k = 1:n
             if isempty(ctxs{k}), continue; end
-            d = detectDarkLesions(imgs{k}, ctxs{k}, 'threshSD', t);
+            d = detectDarkLesions(imgs{k}, ctxs{k}, 'threshSD', t, ...
+                'fragmentRejection', opts.fragmentRejection);
             cand = d.(fld) & ctxs{k}.fov.mask;
             gt = gts{k};
             ccG = bwconncomp(gt, 8);

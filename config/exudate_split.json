@@ -1,0 +1,11 @@
+{
+  "purpose": "Hard-vs-soft exudate decision boundary, FITTED on the IDRiD training split. Read by loadExudateSplit.",
+  "splitThreshold": 1.2,
+  "objective": "max soft F1 s.t. hard precision >= 0.50; falls back to max hard recall when soft cannot clear the reporting gate at any boundary",
+  "ruleApplied": "soft unreportable at every boundary -> maximise hard recall subject to hard precision >= 0.50",
+  "softCanEverBeReported": false,
+  "feasible": true,
+  "fittedOn": "IDRiD segmentation TRAIN split, n=54",
+  "fittedAt": "2026-09-12 14:21",
+  "note": "Fitted on IDRiD train (n=54). Soft-exudate precision peaks at 0.107 across the whole sweep, far below the 0.50 reporting gate, so the soft channel is a detector-level failure rather than a threshold choice and stays hidden. The boundary was therefore set to favour the displayable channel: hard precision 0.692, recall 0.142."
+}

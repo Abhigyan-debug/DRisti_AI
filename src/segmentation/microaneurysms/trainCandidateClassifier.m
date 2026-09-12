@@ -72,7 +72,17 @@ function R = trainCandidateClassifier(opts)
 %   everything scores 97.3% accuracy and discards every lesion. The metrics
 %   that matter are precision and recall on the positive class.
 %
-%   See also BUILDCANDIDATEDATASET, DETECTDARKLESIONS, EVALUATETWOSTAGEDETECTOR.
+%   PATCH GEOMETRY
+%   --------------
+%   Training patches come from BUILDCANDIDATEDATASET, which cuts them at the
+%   WORKING scale (FOV normalised to 1536 px) via CUTCANDIDATEPATCHES - the
+%   same geometry DETECTDARKLESIONS scores at. They used to be cut at full
+%   resolution here and at working scale there, roughly a 2x difference on
+%   IDRiD. The saved model records meta.patchGeometry so a model from before
+%   the fix cannot be loaded into the corrected pipeline; retrain instead.
+%
+%   See also BUILDCANDIDATEDATASET, CUTCANDIDATEPATCHES, DETECTDARKLESIONS,
+%   EVALUATETWOSTAGEDETECTOR.
 
     arguments
         opts.lesion (1,:) char {mustBeMember(opts.lesion,{'microaneurysms','haemorrhages'})} = 'microaneurysms'
@@ -206,7 +216,15 @@ function R = trainCandidateClassifier(opts)
     if ~isempty(opts.pool)
         poolNote = sprintf(' Trained with pooled candidates from: %s.', strjoin(opts.pool, ', '));
     end
+    % PATCHGEOMETRY is a compatibility stamp, not documentation. Patches used
+    % to be cut from the full-resolution frame here and from the working-scale
+    % frame at inference - a ~2x scale mismatch that produced no error and no
+    % warning. LOADCANDIDATECLASSIFIERS refuses any model without this stamp,
+    % so a classifier trained before the fix cannot be silently loaded into the
+    % corrected pipeline and mismatch the other way. Bump the version if the
+    % geometry ever changes again.
     meta = struct('lesion', opts.lesion, 'pooled', {cellstr(opts.pool)}, 'inputSize', inSz, ...
+        'patchGeometry', 'workingScale/v2', ...
         'threshSD', opts.threshSD, 'valImages', {cellstr(valImgs)}, 'auc', auc, 'tta', opts.tta, ...
         'hardNegativeRounds', opts.hardNegativeRounds, 'trainedAt', string(datetime('now')), ...
         'note', ['Stage-2 false-positive classifier. Split by IMAGE. Final ' ...

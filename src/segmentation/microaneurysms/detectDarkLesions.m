@@ -7,6 +7,11 @@ function d = detectDarkLesions(img, ctx, opts)
 %       d.haemMask, d.haemCount, d.haemAreaDD2, d.haemLargestAreaDD2
 %       d.haemByType  struct(dot, blot, flame)
 %
+%   d = DETECTDARKLESIONS(..., 'returnCandidates', true) additionally returns
+%   d.candidates - the PRE-filter candidate set in working-scale coordinates,
+%   which is what BUILDCANDIDATEDATASET needs in order to cut training patches
+%   with the same geometry inference uses. See CUTCANDIDATEPATCHES.
+%
 %   Why one function
 %   ----------------
 %   A microaneurysm and a dot haemorrhage are both small, round, dark, and red.
@@ -16,56 +21,101 @@ function d = detectDarkLesions(img, ctx, opts)
 %   Detecting them separately would mean running the same candidate extraction
 %   twice and then disagreeing with itself about borderline objects.
 %
-%   ⚠️ THE MICROANEURYSM CHANNEL DOES NOT WORK. MEASURED, NOT ASSUMED.
+%   NEITHER DARK-LESION CHANNEL IS VALIDATED FOR DISPLAY.
 %
-%   Against IDRiD's MA ground-truth masks:
-%       per-lesion recall 0.110, precision 0.022, 14.5x over-detection
+%   Last held-out measurement (IDRiD segmentation TEST split, n=27, FOV-masked,
+%   per-lesion component matching, micro-averaged - VALIDATELESIONDETECTORS):
 %
-%   i.e. it misses ~89% of real microaneurysms and ~98% of what it reports is
-%   not a microaneurysm. A parameter sweep confirms this is not a tuning
-%   problem - precision never exceeds 0.022 at ANY threshold, and tightening
-%   the threshold to make the count look plausible simply destroys recall:
+%       microaneurysms  precision 0.046  recall 0.077
+%       haemorrhages    precision 0.130  recall 0.054
 %
-%       threshSD 1.5 -> recall 0.166  precision 0.019   (26x over-detection)
-%       threshSD 2.0 -> recall 0.110  precision 0.022   (14.5x)
-%       threshSD 3.0 -> recall 0.007  precision 0.003   (1.0x - plausible
-%                                      count, detecting essentially nothing)
+%   against a display gate of precision >= 0.50 AND recall >= 0.10 frozen in
+%   config/lesion_validation_thresholds.json. Both fail. Neither count reaches
+%   a clinician: EXTRACTLESIONFEATURES reads the verdict from
+%   results/lesion_validation.mat and fails closed.
 %
-%   That last row is the trap: a count that LOOKS right while being wrong.
+%   Those numbers were produced by a pipeline carrying the four defects listed
+%   below, plus a fifth - the stage-2 threshold was a hardcoded 0.5 nobody had
+%   chosen, now selected on TRAIN by FITLESIONOPERATINGPOINT. All five are
+%   fixed. None has been re-measured. Nothing in this header claims the fixes
+%   helped: run REBUILDDARKLESIONDETECTORS and read the new numbers.
 %
 %   Morphological MA detection without learned false-positive rejection is a
 %   known-hard problem; the best result ever recorded on IDRiD is AUPR 0.5017
-%   (iFLYTEK-MIG) using a cascaded CNN ensemble. Fixing this needs a trained
-%   FP classifier over these candidates, not better morphology.
+%   (iFLYTEK-MIG) using a cascaded CNN ensemble. The binding constraint is
+%   annotated data - 519 MA positives from 54 images - not architecture.
 %
-%   CONSEQUENCE: d.maCount must NOT be shown to a clinician as a finding, and
-%   is flagged unreliable in the feature contract. The candidates are retained
-%   because they are the right input to a future FP classifier, and because
-%   Phase 3 measured that lesion features add nothing to the CNN anyway.
-%   The haemorrhage channel shares this pipeline and should be treated with
-%   the same suspicion until measured separately.
+%   THE FOUR DEFECTS
+%   ----------------
+%   1. PATCH SCALE. Training patches were cut from the full-resolution frame,
+%      inference patches from the working-scale frame. On IDRiD that is a 2.1x
+%      difference in the retinal area behind a 48 px patch. Both paths now go
+%      through CUTCANDIDATEPATCHES, whose header carries the full account.
+%
+%   2. EDGE CANDIDATES. The builder dropped candidates too close to the frame
+%      to cut; the scorer kept them UNSCORED, so they bypassed the
+%      false-positive filter entirely. IDRiD's FOV is flush with the top and
+%      bottom of the frame, so this leaked unfiltered candidates on every
+%      image. Now clamped identically on both sides.
+%
+%   3. GENERATOR THRESHOLD. The classifiers were trained on candidates
+%      generated at meta.threshSD, but the production path -
+%      EXTRACTLESIONFEATURES and VALIDATELESIONDETECTORS - called this function
+%      with no threshSD at all and got the 2.0 default. A classifier trained to
+%      sort a dense, permissive candidate set was applied to a sparse, strict
+%      one. EVALUATETWOSTAGEDETECTOR had honoured meta.threshSD since it was
+%      written, which is why its numbers and the validated numbers disagreed
+%      and nobody could reconcile them. threshSD now defaults to NaN meaning
+%      "adopt the classifier's own", so the two can no longer drift.
+%
+%   4. FRAGMENT MISROUTING. The MA/haemorrhage split was
+%          area <= maAreaMax && eccentricity < 0.85  ->  MA,  else -> haemorrhage
+%      so a five-pixel elongated vessel remnant - far too small to be any kind
+%      of haemorrhage - was booked as a FLAME HAEMORRHAGE. Eccentricity was
+%      acting as a router when it should have been acting as a reject. Size is
+%      the clinical discriminator; small-and-elongated is now discarded as a
+%      fragment. Set 'fragmentRejection', false to reproduce the old routing.
 %
 %   The dot / blot / flame split follows the shape rule R3 should confirm:
 %   dot = small and round, blot = larger and round, flame = elongated
 %   (following the nerve fibre layer). Eccentricity separates flame from the
-%   other two; area separates dot from blot.
+%   other two; area separates dot from blot. The tally is taken AFTER stage-2
+%   filtering - it used to describe the raw candidate set, so haemByType could
+%   sum to more objects than haemCount reported.
 %
-%   See also SEGMENTEXUDATES, EXTRACTLESIONFEATURES.
+%   See also CUTCANDIDATEPATCHES, LOADLESIONOPERATINGPOINTS, SEGMENTEXUDATES,
+%   EXTRACTLESIONFEATURES.
 
     arguments
         img (:,:,:) {mustBeNumeric}
         ctx struct
-        opts.threshSD (1,1) double = 2.0
-        % Stage-2 false-positive classifier. When supplied, every MA candidate
-        % is scored and low-scoring ones are discarded. This can only REMOVE
+        % NaN = adopt the supplied classifier's meta.threshSD, falling back to
+        % 2.0 when no classifier is supplied. An explicit value always wins,
+        % and disables any classifier that was trained at a different one -
+        % see resolveGenerator.
+        opts.threshSD (1,1) double = NaN
+        % Stage-2 false-positive classifier. When supplied, every candidate is
+        % scored and low-scoring ones are discarded. This can only REMOVE
         % candidates - it cannot recover a lesion the generator never proposed,
         % so recall stays capped by generator recall.
-        opts.candidateClassifier struct = struct()
-        opts.classifierThreshold (1,1) double = 0.5
+        % One classifier, or several. Each is routed to the channel it was
+        % TRAINED for (meta.lesion). Untyped so a cell array of classifiers is
+        % accepted alongside the original single-struct form.
+        opts.candidateClassifier = struct()
+        % NaN = read the frozen per-channel operating point from
+        % config/lesion_operating_points.json. The old hardcoded 0.5 was the
+        % loosest point on the score sweep and nobody had chosen it.
+        opts.classifierThreshold (1,1) double = NaN
+        opts.fragmentRejection (1,1) logical = true
+        opts.returnCandidates (1,1) logical = false
     end
 
     fov = ctx.fov;
     disc = ctx.disc;
+
+    CC = normaliseClassifiers(opts.candidateClassifier);
+    [threshSD, CC] = resolveGenerator(opts.threshSD, CC);
+    OP = loadLesionOperatingPoints();
 
     WORK_FOV_PX = 1536;   % higher than other detectors: MAs are tiny
     scale = min(1, WORK_FOV_PX / fov.diameter);
@@ -99,9 +149,9 @@ function d = detectDarkLesions(img, ctx, opts)
 
     vals = flat(valid);
     if isempty(vals)
-        d = emptyResult(img); return
+        d = emptyResult(img, opts.returnCandidates); return
     end
-    thr = median(vals) + opts.threshSD * std(vals);
+    thr = median(vals) + threshSD * std(vals);
     cand = flat > thr & valid;
     cand = imopen(cand, strel('disk', 1));
 
@@ -116,9 +166,10 @@ function d = detectDarkLesions(img, ctx, opts)
 
     maMask = false(size(cand));
     haemMask = false(size(cand));
-    nDot = 0; nBlot = 0; nFlame = 0;
     maCentroids = zeros(0, 2);
     haemCentroids = zeros(0, 2);
+    haemArea = zeros(0, 1);
+    haemEcc = zeros(0, 1);
 
     % MA size cut: 125 microns. A disc is ~1800 microns, so the threshold is
     % about 0.07 disc diameters - this is the conventional clinical boundary
@@ -129,65 +180,86 @@ function d = detectDarkLesions(img, ctx, opts)
         s = stats(k);
         if s.Area > maxArea, continue; end
         px = cc.PixelIdxList{k};
-        if s.Area <= maAreaMax && s.Eccentricity < 0.85
-            maMask(px) = true;
-            maCentroids(end+1, :) = s.Centroid; %#ok<AGROW>
+        if s.Area <= maAreaMax
+            % Small. Round enough to be a microaneurysm, or a fragment.
+            if s.Eccentricity < 0.85
+                maMask(px) = true;
+                maCentroids(end+1, :) = s.Centroid; %#ok<AGROW>
+            elseif ~opts.fragmentRejection
+                % Defect 4, preserved behind a flag so the change can be
+                % measured against the old routing on the TRAIN split rather
+                % than asserted.
+                haemMask(px) = true;
+                haemCentroids(end+1, :) = s.Centroid; %#ok<AGROW>
+                haemArea(end+1, 1) = s.Area;          %#ok<AGROW>
+                haemEcc(end+1, 1) = s.Eccentricity;   %#ok<AGROW>
+            end
+            % else: small and elongated -> a vessel remnant or a noise streak.
+            % Too small to be any grade of haemorrhage, too elongated to be an
+            % MA. Belongs to neither channel.
         else
             haemMask(px) = true;
             haemCentroids(end+1, :) = s.Centroid; %#ok<AGROW>
-            if s.Eccentricity > 0.88
-                nFlame = nFlame + 1;         % elongated, follows nerve fibres
-            elseif s.Area > pi * (discDiamWork * 0.08)^2
-                nBlot = nBlot + 1;
-            else
-                nDot = nDot + 1;
-            end
+            haemArea(end+1, 1) = s.Area;          %#ok<AGROW>
+            haemEcc(end+1, 1) = s.Eccentricity;   %#ok<AGROW>
         end
     end
 
+    if opts.returnCandidates
+        d.candidates = struct( ...
+            'workImage', small, ...
+            'scale', scale, ...
+            'workSize', size(green), ...
+            'discDiamWork', discDiamWork, ...
+            'threshSD', threshSD, ...
+            'microaneurysms', struct('centroids', maCentroids, 'mask', maMask), ...
+            'haemorrhages',   struct('centroids', haemCentroids, 'mask', haemMask), ...
+            'note', ['PRE-filter candidates in WORKING-SCALE coordinates. ' ...
+                     'Cut patches with CUTCANDIDATEPATCHES so training and ' ...
+                     'inference share one geometry.']);
+    end
+
     % --- stage 2: false-positive rejection --------------------------------
-    % ⚠️ Routed by which channel the supplied classifier was TRAINED for
+    % Routed by which channel the supplied classifier was TRAINED for
     % (meta.lesion). A classifier trained on microaneurysm candidates has never
     % seen a haemorrhage-sized patch and should not silently be applied to that
     % channel, or vice versa. This was previously unconditional-on-MA-only:
     % passing a classifier while evaluating haemorrhages filtered nothing at
     % all (haemMask was never touched), and "stage 1 + classifier" silently
     % equalled "stage 1 alone" - caught via EVALUATETWOSTAGEDETECTOR('haemorrhages')
-    % showing identical numbers with and without the classifier.
-    targetLesion = '';
-    if isfield(opts.candidateClassifier, 'meta') && isfield(opts.candidateClassifier.meta, 'lesion')
-        targetLesion = char(opts.candidateClassifier.meta.lesion);
-    end
+    % showing identical numbers with and without the classifier. It was then a
+    % single classifier behind an if/elseif, so supplying both an MA and a
+    % haemorrhage model filtered only whichever was checked first and left the
+    % other channel raw. It now loops.
+    for ci = 1:numel(CC)
+        C = CC{ci};
+        chan = char(C.meta.lesion);
+        if ~isfield(OP, chan) || ~OP.(chan).applyClassifier
+            % The frozen operating point says run stage 1 alone on this
+            % channel. That is how the "the haemorrhage classifier makes
+            % things worse" question gets settled by a committed decision
+            % instead of by whoever last edited a source file.
+            continue
+        end
 
-    if isfield(opts.candidateClassifier, 'trained') && strcmp(targetLesion, 'microaneurysms') ...
-            && ~isempty(maCentroids)
-        keep = scoreCandidates(small, maCentroids, opts.candidateClassifier, ...
-                               opts.classifierThreshold, scale);
-        ccMA = bwconncomp(maMask, 8);
-        drop = false(size(maMask));
-        for q = 1:ccMA.NumObjects
-            if q <= numel(keep) && ~keep(q)
-                drop(ccMA.PixelIdxList{q}) = true;
-            end
+        thrC = opts.classifierThreshold;
+        if ~isfinite(thrC), thrC = OP.(chan).classifierThreshold; end
+
+        switch chan
+            case 'microaneurysms'
+                if isempty(maCentroids), continue; end
+                keep = scoreLesionCandidates(small, maCentroids, C) >= thrC;
+                maMask = dropRejected(maMask, keep);
+                maCentroids = maCentroids(keep, :);
+
+            case 'haemorrhages'
+                if isempty(haemCentroids), continue; end
+                keep = scoreLesionCandidates(small, haemCentroids, C) >= thrC;
+                haemMask = dropRejected(haemMask, keep);
+                haemCentroids = haemCentroids(keep, :);
+                haemArea = haemArea(keep);
+                haemEcc = haemEcc(keep);
         end
-        maMask(drop) = false;
-        maCentroids = maCentroids(keep(1:min(numel(keep), size(maCentroids,1))), :);
-    elseif isfield(opts.candidateClassifier, 'trained') && strcmp(targetLesion, 'haemorrhages') ...
-            && ~isempty(haemCentroids)
-        keep = scoreCandidates(small, haemCentroids, opts.candidateClassifier, ...
-                               opts.classifierThreshold, scale);
-        ccH = bwconncomp(haemMask, 8);
-        drop = false(size(haemMask));
-        for q = 1:ccH.NumObjects
-            if q <= numel(keep) && ~keep(q)
-                drop(ccH.PixelIdxList{q}) = true;
-            end
-        end
-        haemMask(drop) = false;
-        haemCentroids = haemCentroids(keep(1:min(numel(keep), size(haemCentroids,1))), :);
-        % dot/blot/flame counts were tallied before filtering and are not
-        % recomputed here - haemByType is a shape breakdown of the RAW
-        % candidate set, not a claim about the filtered one.
     end
 
     % --- measure ----------------------------------------------------------
@@ -215,72 +287,138 @@ function d = detectDarkLesions(img, ctx, opts)
     else
         d.haemLargestAreaDD2 = 0;
     end
-    d.haemByType = struct('dot', nDot, 'blot', nBlot, 'flame', nFlame);
+
+    % Tallied from the SURVIVING haemorrhages, not the raw candidate set.
+    blotAreaMin = pi * (discDiamWork * 0.08)^2;
+    isFlame = haemEcc > 0.88;
+    isBlot  = ~isFlame & haemArea > blotAreaMin;
+    d.haemByType = struct('dot', nnz(~isFlame & ~isBlot), ...
+                          'blot', nnz(isBlot), 'flame', nnz(isFlame));
 end
 
 
-function keep = scoreCandidates(small, centroids, C, thr, scale)
-%SCORECANDIDATES  Run the stage-2 classifier over candidate patches.
-%
-%   Patches are cut at the SAME size the classifier was trained on, from the
-%   working-scale image. A size mismatch here silently degrades the classifier
-%   without erroring, which is why the size comes from the saved metadata
-%   rather than being hardcoded.
-%
-%   TEST-TIME AUGMENTATION. A lesion patch has no canonical orientation, so the
-%   score is averaged over all 8 dihedral views when the saved model was
-%   trained with TTA (meta.tta) - matching how it was validated. Scoring one
-%   orientation at inference while validating on 8 would silently under-deliver
-%   the measured operating point.
+% ------------------------------------------------------------------ helpers
 
-    inSz = C.meta.inputSize;
-    half = floor(inSz(1)/2);
-    n = size(centroids, 1);
-    keep = true(n, 1);
-    useTTA = isfield(C.meta, 'tta') && C.meta.tta;
-    nViews = 1; if useTTA, nViews = 8; end
-
-    patches = zeros([inSz(1:2) 3 n*nViews], 'single');
-    valid = false(n,1);
-    for q = 1:n
-        ctr = round(centroids(q,:));
-        r1 = ctr(2)-half; r2 = ctr(2)+half-1;
-        c1 = ctr(1)-half; c2 = ctr(1)+half-1;
-        if r1 < 1 || c1 < 1 || r2 > size(small,1) || c2 > size(small,2)
-            continue    % keep edge candidates rather than discard unscored
-        end
-        pch = single(small(r1:r2, c1:c2, :));
-        if size(pch,3) == 1, pch = repmat(pch,1,1,3); end
-        base = (q-1)*nViews;
-        if useTTA
-            views = {pch, fliplr(pch), flipud(pch), rot90(pch,1), rot90(pch,2), ...
-                     rot90(pch,3), fliplr(rot90(pch,1)), fliplr(rot90(pch,2))};
-            for v = 1:8
-                patches(:,:,:,base+v) = views{v};
-            end
-        else
-            patches(:,:,:,base+1) = pch;
-        end
-        valid(q) = true;
+function CC = normaliseClassifiers(CC)
+%NORMALISECLASSIFIERS  Accept a struct, a cell array, or nothing; return a cell array.
+    if isstruct(CC)
+        if isempty(fieldnames(CC)), CC = {}; else, CC = num2cell(CC); end
+    elseif ~iscell(CC)
+        CC = {};
     end
-
-    if ~any(valid), return; end
-    validCols = false(1, n*nViews);
-    for q = find(valid)'
-        validCols((q-1)*nViews+1 : q*nViews) = true;
+    keep = false(1, numel(CC));
+    for k = 1:numel(CC)
+        C = CC{k};
+        keep(k) = isstruct(C) && isfield(C, 'trained') && isfield(C, 'meta') ...
+                  && isfield(C.meta, 'lesion');
     end
-    Y = predict(C.trained, dlarray(patches(:,:,:,validCols), 'SSCB'));
-    P = double(gather(extractdata(Y)))';
-    scAll = P(:,2);
-    sc = mean(reshape(scAll, nViews, nnz(valid)), 1)';
-    keep(valid) = sc >= thr;
+    CC = CC(keep);
 end
 
 
-function d = emptyResult(img)
+function [threshSD, CC] = resolveGenerator(requested, CC)
+%RESOLVEGENERATOR  Reconcile the generator threshold with what the classifiers expect.
+%
+%   Defect 3. A stage-2 classifier is a function of the candidate distribution
+%   it was trained on, and that distribution is set by threshSD. Applying it to
+%   candidates from a different threshold is a silent domain shift: no error,
+%   no warning, just a worse detector. The production path did exactly this for
+%   as long as the classifiers existed.
+%
+%   Rules, in order:
+%     * caller gave an explicit threshSD -> honour it, and DISABLE any
+%       classifier trained at a different one (loudly). The caller is usually
+%       BUILDCANDIDATEDATASET or SWEEPGENERATORRECALL, which are deliberately
+%       probing the generator and must not have a classifier interfering.
+%     * no explicit value, classifiers agree -> adopt theirs.
+%     * no explicit value, classifiers DISAGREE -> the generator is shared, so
+%       no single run can satisfy both. Disable stage 2 and fall back to 2.0.
+%       Degrading to a noisier stage-1 pipeline is recoverable; shipping a
+%       classifier fed out-of-distribution candidates is the bug being fixed.
+%     * no classifiers -> 2.0, the long-standing default.
+
+    DEFAULT_THRESH_SD = 2.0;
+
+    metaThr = nan(1, numel(CC));
+    for k = 1:numel(CC)
+        if isfield(CC{k}.meta, 'threshSD') && isscalar(CC{k}.meta.threshSD)
+            metaThr(k) = double(CC{k}.meta.threshSD);
+        end
+    end
+
+    if isfinite(requested)
+        threshSD = requested;
+        bad = isfinite(metaThr) & abs(metaThr - threshSD) > 1e-9;
+        if any(bad)
+            warnOnce('drishti:generatorThresholdOverridden', ...
+                ['detectDarkLesions: threshSD %.2f was requested explicitly, but ' ...
+                 '%d classifier(s) were trained on candidates from a different ' ...
+                 'threshold (%s). Those classifiers are DISABLED for this call - ' ...
+                 'scoring them on an out-of-distribution candidate set would ' ...
+                 'measure the mismatch, not the classifier.'], ...
+                threshSD, nnz(bad), mat2str(metaThr(bad), 3));
+            CC = CC(~bad);
+        end
+        return
+    end
+
+    known = metaThr(isfinite(metaThr));
+    if isempty(known)
+        threshSD = DEFAULT_THRESH_SD;
+        return
+    end
+    if max(known) - min(known) > 1e-9
+        warnOnce('drishti:generatorThresholdConflict', ...
+            ['detectDarkLesions: the loaded stage-2 classifiers were trained on ' ...
+             'candidates from DIFFERENT generator thresholds (%s). One generator ' ...
+             'run cannot serve both, so stage 2 is disabled and the detector ' ...
+             'falls back to threshSD %.2f. Retrain both channels at one threshold.'], ...
+            mat2str(known, 3), DEFAULT_THRESH_SD);
+        threshSD = DEFAULT_THRESH_SD;
+        CC = {};
+        return
+    end
+    threshSD = known(1);
+end
+
+
+function warnOnce(id, fmt, varargin)
+%WARNONCE  Emit a warning at most once per session; these run inside 27-image loops.
+    persistent seen
+    if isempty(seen), seen = {}; end
+    if any(strcmp(seen, id)), return; end
+    seen{end+1} = id; %#ok<AGROW>
+    warning(id, fmt, varargin{:});
+end
+
+
+function m = dropRejected(m, keep)
+%DROPREJECTED  Remove the components of `m` whose `keep` flag is false.
+%
+%   `keep` is indexed by the enumeration order of BWCONNCOMP over `m`. That is
+%   the same order the centroids were collected in: components are enumerated
+%   by the linear index of their first pixel, `m` is a subset of the components
+%   of the candidate mask with every kept component's pixels intact, and taking
+%   a subset preserves relative order.
+    cc = bwconncomp(m, 8);
+    for q = 1:cc.NumObjects
+        if q <= numel(keep) && ~keep(q)
+            m(cc.PixelIdxList{q}) = false;
+        end
+    end
+end
+
+
+function d = emptyResult(img, withCandidates)
     z = false(size(img,1), size(img,2));
     d = struct('maMask', z, 'haemMask', z, 'maCount', 0, 'maDensityPerDD2', 0, ...
         'maCountWithin1DD', 0, 'haemCount', 0, 'haemAreaDD2', 0, ...
         'haemLargestAreaDD2', 0, ...
         'haemByType', struct('dot',0,'blot',0,'flame',0));
+    if withCandidates
+        e = struct('centroids', zeros(0,2), 'mask', false(0,0));
+        d.candidates = struct('workImage', [], 'scale', 1, 'workSize', [0 0], ...
+            'discDiamWork', 0, 'threshSD', NaN, ...
+            'microaneurysms', e, 'haemorrhages', e, 'note', 'empty');
+    end
 end

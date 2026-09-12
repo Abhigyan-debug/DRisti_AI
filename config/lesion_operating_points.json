@@ -1,0 +1,54 @@
+{
+  "_purpose": "Stage-2 operating point for the two dark-lesion channels (microaneurysms, haemorrhages): the classifier score above which a candidate is kept, and whether the stage-2 classifier is applied to that channel at all.",
+  "version": "1.0",
+  "status": "UNSELECTED - fallback values in force",
+  "selected_on": null,
+  "selected_by": null,
+  "fitted_with": "src/segmentation/microaneurysms/fitLesionOperatingPoint.m",
+
+  "_why_this_file_exists": [
+    "The stage-2 classifier threshold shipped as a literal 0.5 in the",
+    "arguments block of detectDarkLesions. Nobody chose it. 0.5 is the",
+    "LOOSEST point on the score sweep trainCandidateClassifier already prints,",
+    "so the detector was running at the operating point that maximises false",
+    "positives, against a display gate (config/lesion_validation_thresholds.json)",
+    "that gates on PRECISION. The knob that trades the failing metric for the",
+    "passing one was set to its worst value and was not written down anywhere.",
+    "",
+    "It now lives in a file, is selected on the TRAINING split, and is read at",
+    "runtime - the same discipline already applied to the hard/soft exudate",
+    "boundary (config/exudate_split.json) and to the referable-DR endpoint",
+    "(config/clinical_definitions.json).",
+    "",
+    "SELECTION IS ON TRAIN, NOT TEST. The held-out IDRiD test split decides",
+    "whether a channel may be DISPLAYED; it must never decide what the",
+    "detector's own settings are. Picking this threshold on the test split",
+    "would make the gate in lesion_validation_thresholds.json meaningless,",
+    "because the number it gates would have been chosen to pass it."
+  ],
+
+  "selection_rule": {
+    "objective": "the LOWEST classifier threshold whose TRAIN-split micro precision reaches precisionTarget; among ties, the one with the highest recall",
+    "precisionTarget": 0.55,
+    "precisionTarget_rationale": "The display gate is precision >= 0.50 measured on TEST. Selecting on TRAIN at exactly 0.50 would leave zero headroom for the generalisation gap and the channel would fail the gate on any unlucky split. 0.55 is a margin, not a second gate - it is not a claim that 0.55 is achievable.",
+    "tie_break": "maximise recall",
+    "fallback_if_target_unreachable": "report the threshold with the best TRAIN F1 and record reachedTarget=false; the channel then fails the display gate honestly rather than being tuned until it passes"
+  },
+
+  "channels": {
+    "microaneurysms": {
+      "classifierThreshold": 0.5,
+      "applyClassifier": true,
+      "status": "UNSELECTED_FALLBACK",
+      "note": "0.5 is the value that was hardcoded in detectDarkLesions before this file existed. The fallback is deliberately the OLD behaviour rather than a guess, so a machine that has not run the fit does what the project always did."
+    },
+    "haemorrhages": {
+      "classifierThreshold": 0.5,
+      "applyClassifier": true,
+      "status": "UNSELECTED_FALLBACK",
+      "note": "See docs/phase2_results.md section 4: wiring this classifier in DROPPED held-out F1 from 0.138 to 0.077 (recall 0.174 -> 0.054). That observation came from the TEST split and must not be acted on there. applyClassifier is the switch that decision belongs to, and fitLesionOperatingPoint decides it on TRAIN."
+    }
+  },
+
+  "_not_a_display_gate": "Nothing in this file may be read as permission to display a channel. Display is decided only by config/lesion_validation_thresholds.json, measured on the held-out test split by validateLesionDetectors.m."
+}

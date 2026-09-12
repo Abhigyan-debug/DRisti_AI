@@ -1,0 +1,62 @@
+{
+  "_purpose": "Pre-registered reporting bar for Module 2 lesion detectors. FROZEN BEFORE the validation was run. A detector may be displayed in the clinical report only if it clears these gates on the held-out split.",
+  "version": "1.0",
+  "frozen": "2026-09-12",
+  "frozenBy": "R1",
+  "frozenBefore": "validateLesionDetectors.m was executed for the first time",
+
+  "_why_this_file_exists": [
+    "A threshold chosen after seeing the numbers is not a threshold, it is a",
+    "description of the numbers. The project already treats operating points",
+    "this way for the referable-DR endpoint (clinical_definitions.json), and",
+    "the same discipline applies here: the bar is written down, frozen, and",
+    "only then is the measurement run. results/lesion_validation.mat records",
+    "the SHA-256 of THIS FILE so the ordering is checkable after the fact --",
+    "if the gates were edited to fit the results, the hash will not match."
+  ],
+
+  "protocol": {
+    "dataset": "IDRiD segmentation, TESTING split",
+    "split_rationale": "The hard-exudate operating point (segmentExudates thresholdK = 3.0) was selected on the TRAINING split by sweepExudateThreshold.m. Scoring it on that same split would be reporting tuning performance. The testing split has never been used to choose any detector parameter.",
+    "images_scored": 27,
+    "images_with_lesion_present": {
+      "microaneurysms": 27,
+      "haemorrhages": 27,
+      "hardExudates": 27,
+      "softExudates": 14
+    },
+    "absent_mask_rule": "EVERY channel is scored on ALL 27 test images. IDRiD ships a mask file for a lesion type only when that lesion is present, so an absent mask is read as an EMPTY ground truth, not as a missing label. Any detection on such an image is therefore a false positive.",
+    "absent_mask_rationale": "Soft exudates are present in only 14 of the 27 test images. Scoring the channel on those 14 alone would discard every false positive it produces on the 13 negative images, which is precisely the error that makes a weak detector look publishable. The same rule is applied to all four channels so none is scored on a kinder set than the others.",
+    "fov_masking": true,
+    "fov_rationale": "Pixels outside the field of view are trivially correct and inflate every metric. Both prediction and ground truth are masked.",
+    "matching": "per-lesion, 8-connected components",
+    "matching_rationale": "Microaneurysms are a few pixels across, so pixelwise Dice is destroyed by a one-pixel offset that is clinically irrelevant. A ground-truth component counts as found if any predicted pixel lands on it; a predicted component counts as correct if any of its pixels land on ground truth.",
+    "operating_point": "one fixed detector configuration for all images; no per-image and no per-channel tuning",
+    "aggregation": "MICRO (pooled true/false positives and false negatives across all images) is the gating statistic; MACRO (mean of per-image rates) is reported alongside it.",
+    "aggregation_rationale": "Lesion counts per image vary by orders of magnitude. A macro mean lets an image containing one ground-truth lesion carry the same weight as one containing two hundred, which flatters a detector on sparse images. Micro answers the question the clinical report actually asks: of everything this detector will put on screen, what fraction is real."
+  },
+
+  "metrics_reported": ["precision", "recall", "f1"],
+
+  "gates": {
+    "displayPrecisionMin": 0.50,
+    "displayRecallMin": 0.10,
+    "rule": "reliable = (microPrecision >= displayPrecisionMin) AND (microRecall >= displayRecallMin)",
+    "f1_is_a_gate": false
+  },
+
+  "gate_rationale": {
+    "precision_0.50": "Below one-half, a displayed finding misinforms more often than it informs. This bar predates this validation -- it is the same 0.5 already used by evaluateSegmentation.m's fitToDisplay flag -- and is deliberately low: it is a floor for showing anything at all, not a standard of excellence.",
+    "recall_0.10": "Precision alone can be bought by near-silence: a detector that fires twice per image and happens to be right both times scores 1.00 precision while missing everything. Once lesion LOCATIONS are drawn on a report, near-silence reads to a clinician as a clean retina. A detector finding fewer than one lesion in ten cannot support that reading.",
+    "f1_not_a_gate": "F1 weights precision and recall equally. For a displayed corroborating finding the costs are not equal -- a fabricated lesion on a clinical document is worse than an unmentioned one, because overall severity is carried by the grader, not by this channel. F1 is reported because it is the standard summary and hiding it would look like selection."
+  },
+
+  "ceilings_for_context": {
+    "_source": "docs/literature_benchmarks.md -- published IDRiD AUPR ceilings, NOT comparable to our per-lesion precision, listed only so nobody reads a low number as a broken pipeline",
+    "microaneurysms": 0.50,
+    "haemorrhages": 0.68,
+    "softExudates": 0.70,
+    "hardExudates": 0.885,
+    "_warning": "Microaneurysm detection is genuinely hard. A per-lesion MA score near 0.9 means a bug or a leak, not a breakthrough."
+  }
+}

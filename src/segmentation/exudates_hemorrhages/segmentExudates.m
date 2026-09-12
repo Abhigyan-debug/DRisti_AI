@@ -61,6 +61,18 @@ function e = segmentExudates(img, ctx, opts)
         % the previously-claimed 0.254. Re-run EVALUATESEGMENTATION('exudates')
         % before trusting a number here - do not restate old figures.
         opts.thresholdK (1,1) double = 3.0
+        % Hard-vs-soft decision boundary on the combined sharpness/yellowness
+        % score. This was a bare 1.0 in the code and had never been fitted to
+        % ground truth - the soft channel it produced scored precision 0.000 on
+        % the held-out split (4 detections in 27 images, none correct). NaN
+        % means "read the fitted value from config/exudate_split.json"; a
+        % number overrides it, which is what FITEXUDATESPLIT sweeps.
+        opts.splitThreshold (1,1) double = NaN
+        % Per-component pixel lists, needed only by FITEXUDATESPLIT. Retaining
+        % them on every call exhausted memory partway through a 27-image
+        % validation run on 4288x2848 images: thousands of index vectors held
+        % alongside four full-size masks and a 293 MB double conversion.
+        opts.returnSplitDiagnostics (1,1) logical = false
     end
 
     fov = ctx.fov;
@@ -115,9 +127,13 @@ function e = segmentExudates(img, ctx, opts)
     lab = rgb2lab(small);
     bStar = lab(:,:,3);            % yellow-blue axis; exudate lipid is yellow
 
+    splitThr = opts.splitThreshold;
+    if isnan(splitThr), splitThr = loadExudateSplit(); end
+
     cc = bwconncomp(cand, 8);
     hardMask = false(size(cand));
     softMask = false(size(cand));
+    splitScores = zeros(cc.NumObjects, 1);
     for k = 1:cc.NumObjects
         px = cc.PixelIdxList{k};
         sharpness = mean(gradMag(px));
@@ -138,11 +154,23 @@ function e = segmentExudates(img, ctx, opts)
         yellowScore = yellowness / 25;
         combined = 0.5 * min(sharpScore, 2) + 0.5 * min(yellowScore, 2);
 
-        if combined >= 1.0
+        splitScores(k) = combined;
+        if combined >= splitThr
             hardMask(px) = true;
         else
             softMask(px) = true;
         end
+    end
+
+    % Diagnostics for FITEXUDATESPLIT: the per-component score and where each
+    % component sits, so the boundary can be swept against ground truth without
+    % re-running candidate generation once per candidate threshold.
+    if opts.returnSplitDiagnostics
+        e.split = struct('threshold', splitThr, 'scores', splitScores, ...
+                         'pixelIdxList', {cc.PixelIdxList}, 'workSize', size(cand));
+    else
+        e.split = struct('threshold', splitThr, 'scores', splitScores, ...
+                         'pixelIdxList', {{}}, 'workSize', size(cand));
     end
 
     % --- measure ----------------------------------------------------------
