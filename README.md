@@ -6,6 +6,12 @@
 > **New here?** Run `python tools/verify_setup.py` to check this machine, then read
 > the measured results in [docs/](docs/) — each phase documents its own protocol.
 > Setup instructions: [docs/environment_setup.md](docs/environment_setup.md).
+>
+> **Checking our claims?** `python tools/check_all.py` — six checks, no MATLAB and
+> no datasets needed (add `--skip-setup`). It verifies that every pre-registered
+> contract still hashes to its recorded value, that no retired or banned figure
+> appears anywhere in the repository, and that every code path still refuses to
+> re-read the held-out benchmark. §6 says what that does and does not prove.
 
 ---
 
@@ -341,6 +347,15 @@ the system.*
       **tested three ways, does not hold.** Quality gate + grader is a *regression*
       (−9.2 pp specificity); hybrid lesion features and multi-domain training also
       failed to beat the baseline. See [docs/phase6_results.md](docs/phase6_results.md) §4.
+- [x] **The claims in this repository are machine-checked** — `python tools/check_all.py`
+      verifies that no banned or superseded figure appears anywhere, that every
+      metric carries its evaluation protocol, that the six pre-registered contracts
+      still hash to their recorded values, and that every entry point still guards
+      the spent benchmark. Three of the six checks are tests *of* the other three,
+      because a verifier that has quietly stopped comparing anything reports
+      success forever. **Scope, stated honestly:** this proves the repository says
+      only what it measured and that the bars were frozen before the measurements —
+      it does **not** re-derive any number. Re-measuring is still a human's job.
 
 ---
 
@@ -357,12 +372,22 @@ DRishti_AI/
 │   ├── drishti_paths.m           # THE path contract - every dataset path lives here
 │   ├── check_environment.m       # toolbox + licence + GPU + dataset readiness
 │   ├── dataset_layout.json       # shared layout contract (MATLAB + Python read this)
+│   ├── clinical_definitions.json # THE referable-DR endpoint - frozen, R3-owned
+│   ├── frozen_artifacts.json     # the pre-registration manifest: what was frozen, when
+│   ├── claim_rules.json          # banned + superseded numbers, machine-checkable
 │   ├── local_paths.example.json  # copy -> local_paths.json, set your data root
 │   └── local_paths.json          # git-ignored, per-machine
-├── tools/                        # Python, runs without MATLAB
-│   ├── organize_datasets.py      # move/extract/verify raw downloads -> canonical layout
-│   └── verify_setup.py           # "is this machine ready?" - CI-safe, exits non-zero
-├── tests/
+├── tools/                        # Python, runs without MATLAB - anyone can run these
+│   ├── check_all.py              # ALL of the below, one verdict. Run before committing.
+│   ├── verify_setup.py           # "is this machine ready?" - CI-safe, exits non-zero
+│   ├── verify_freeze.py          # has any pre-registered contract moved since freezing?
+│   ├── check_claims.py           # does the repo state only what was measured?
+│   ├── test_check_claims.py      # ...and would that checker still catch a banned claim
+│   ├── test_verify_freeze.py     # ...and would the freeze check still detect tampering
+│   ├── test_holdout_guard.py     # does every entry point still guard the spent benchmark
+│   ├── idrid_dme_crosstab.py     # the measured cost of excluding DME
+│   └── organize_datasets.py      # move/extract/verify raw downloads -> canonical layout
+├── tests/                        # MATLAB suite - 57 cases, needs MATLAB
 │   └── test_project_setup.m      # Phase 0 smoke tests (runtests)
 ├── data/                         # junction/symlink to the data root - GIT-IGNORED
 │   ├── aptos2019/  idrid/  drive/  messidor2/
