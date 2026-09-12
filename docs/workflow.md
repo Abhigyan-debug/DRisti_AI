@@ -14,7 +14,8 @@ python tools/verify_setup.py          # exits non-zero if the machine is not rea
 ```matlab
 setup_drishti                          % paths + toolbox check (startup.m auto-runs it)
 check_environment                      % toolboxes, licences, GPU, datasets
-runtests('tests')                      % full suite — should be 33 passed, 0 failed
+runtests('tests')                      % 57 test cases; last recorded run 33/33,
+                                       % before the newest 24 were added
 ```
 
 If datasets are missing, point at them **without touching tracked files**: set
@@ -143,13 +144,15 @@ a browser reload.
 ## 7. Before you commit
 
 ```matlab
-runtests('tests')                     % 33 passed, 0 failed
+runtests('tests')                     % 57 cases; 24 of them never yet run
 ```
 
 ```bash
 python tools/verify_setup.py          # must stay green
 python tools/check_claims.py --strict # no banned or superseded numbers in the repo
 python tools/test_check_claims.py     # ...and the checker itself still catches them
+python tools/verify_freeze.py         # no pre-registered contract has moved
+python tools/test_verify_freeze.py    # ...and that check still detects tampering
 git status --short -- data/ models/ results/ reports/ webapp/jobs/   # must be empty
 ```
 

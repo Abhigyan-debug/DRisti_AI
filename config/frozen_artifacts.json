@@ -1,0 +1,99 @@
+{
+  "_comment": [
+    "The pre-registration manifest, checked by tools/verify_freeze.py.",
+    "",
+    "This project's methodological claim is an ORDERING claim: the bar was written",
+    "down, and only then was the measurement run. That is what makes a reported",
+    "number a result rather than a description of the numbers. An ordering claim is",
+    "worthless if it cannot be checked, and 'trust us, we froze it first' is not a",
+    "check - so every frozen artifact records its SHA-256 here, and one command",
+    "verifies that none of them has moved since.",
+    "",
+    "The hashes below were verified against the files on 2026-09-13 and match the",
+    "values already quoted in docs/phase2_results.md, docs/train_operating_points_frozen.md",
+    "and CLAUDE.md - which is itself the point: the docs and the manifest agree, so",
+    "a reader can check either one.",
+    "",
+    "WHEN A HASH CHANGES. A failure here is not automatically misconduct - a",
+    "contract can legitimately be amended. But it must be amended DELIBERATELY:",
+    "update the hash in the same commit as the change, say what changed and why in",
+    "the artifact's own _amendments or in the doc named below, and never after",
+    "seeing a result the change would flatter. Anything that edits a gate to fit a",
+    "measurement is the exact failure this file exists to make visible.",
+    "",
+    "A frozen file may only be re-frozen by someone who can say what they knew at",
+    "the time. If you cannot, the honest move is to re-run the measurement.",
+    "",
+    "LINE ENDINGS ARE PART OF THE HASH. These are raw SHA-256 digests of the bytes",
+    "on disk, matching what validateLesionDetectors.m computes at runtime - so a",
+    "file converted from LF to CRLF hashes differently with no character changed.",
+    ".gitattributes pins config/*.json to eol=lf for exactly this reason. Without",
+    "that pin, `* text=auto` gives every Windows checkout CRLF, and a fresh clone",
+    "reports a mismatch on a file nobody touched: a true-looking alarm with no",
+    "cause, which is the fastest way to teach people to ignore a real one. If you",
+    "ever see every artifact move at once, suspect line endings before misconduct."
+  ],
+
+  "version": 1,
+  "verified": "2026-09-13",
+
+  "artifacts": [
+    {
+      "path": "config/lesion_validation_thresholds.json",
+      "sha256": "1c447a7428e4781ab57241106532f81dc9ec325cf724f9c8c3cc46d6a996d4d1",
+      "frozen": "2026-09-12",
+      "frozen_by": "R1",
+      "governs": "The Module 2 display gate: precision >= 0.50 AND recall >= 0.10 on the IDRiD segmentation TEST split, micro-averaged, FOV-masked, per-lesion component matching.",
+      "why_it_must_not_move": "Three of four lesion channels FAIL this gate and are hidden from the clinical report because of it. Loosening it would put microaneurysm counts at 0.028 precision in front of a clinician. The file was frozen before validateLesionDetectors ran for the first time, and results/lesion_validation.mat records this hash so the ordering stays checkable after the fact.",
+      "documented_in": "docs/phase2_results.md",
+      "verified_unchanged_across": "both the 2026-09-12 and 2026-09-13 measurement runs"
+    },
+    {
+      "path": "config/lesion_operating_points.json",
+      "sha256": "9dae8cc0aa476c9623c599f1fa9ada19f2ae3bfb8be9fc1e69f1a6156573b6fe",
+      "frozen": "2026-09-12",
+      "frozen_by": "fitLesionOperatingPoint.m, on the IDRiD TRAIN split only",
+      "governs": "The shipped dark-lesion operating point. Stage 1 alone won on both channels, so applyClassifier = false.",
+      "why_it_must_not_move": "Selected on TRAIN specifically so the held-out TEST split could certify it. Re-selecting on TEST would mean the display gate was certifying a number chosen to pass it.",
+      "documented_in": "docs/train_operating_points_frozen.md"
+    },
+    {
+      "path": "config/lesion_operating_points_before_ablation.json",
+      "sha256": "9dae8cc0aa476c9623c599f1fa9ada19f2ae3bfb8be9fc1e69f1a6156573b6fe",
+      "frozen": "2026-09-12",
+      "frozen_by": "R1",
+      "governs": "Snapshot of record: the operating points as they stood at the moment the 2x2 patch-geometry x threshSD ablation started.",
+      "why_it_must_not_move": "It is the evidence that the ablation did not change the shipped configuration. It is expected to be byte-identical to config/lesion_operating_points.json - see must_match below - and if the two ever diverge, one of them moved after the ablation.",
+      "must_match": "config/lesion_operating_points.json",
+      "documented_in": "docs/train_operating_points_frozen.md"
+    },
+    {
+      "path": "config/clinical_definitions.json",
+      "sha256": "fb34bc919ea7c05594e4331ebe6f7f3a6fe63522fe25599d4371936c8c4b2d56",
+      "frozen": "2026-09-11, amended to v1.1.0 the same day (B12, logged in _amendments)",
+      "frozen_by": "R3 (Abhigyat)",
+      "governs": "The referable-DR endpoint: ICDR >= 2 OR referable DME, with per-dataset dme_encoding (IDRiD == 2, Messidor-2 == 1, APTOS none). Also the three reported endpoints and the operating-point freeze policy.",
+      "why_it_must_not_move": "The whole headline claim is stated against this endpoint, and the Messidor-2 read that tested it is SPENT - it cannot be repeated under a different definition. A silent change here would retroactively invalidate the external result. B12 is the cautionary case: a single global DME threshold matched nothing on Messidor-2 and quietly degraded the primary endpoint to DR-only, returning a plausible number with no error.",
+      "documented_in": "docs/clinical_definitions.md"
+    },
+    {
+      "path": "config/quality_thresholds.json",
+      "sha256": "5edcef5d8d898794561ad18ab81cf4e046382ad3f649beecff6d18aa33ec147e",
+      "frozen": "2026-09-11",
+      "frozen_by": "R1, measured from 380 images",
+      "governs": "The Module 1 quality gate.",
+      "why_it_must_not_move": "Measured, not guessed - and the gate's effect on grading was measured too (-9.2pp specificity). Any change invalidates that measurement.",
+      "documented_in": "docs/phase1_quality_baseline.md"
+    },
+    {
+      "path": "config/telemedicine_parameters.json",
+      "sha256": "8a60a7a2c71524140862e677a1fc8d8c269e8367939d07bb54f697a55ef00362",
+      "frozen": "2026-09-11",
+      "frozen_by": "R3 (Abhigyat)",
+      "governs": "Every Module 5 parameter, each tagged SOURCED / DERIVED / ASSUMED.",
+      "why_it_must_not_move": "It is the contract screening_params.m defers to, and the reason the duplicate constants that disagreed were removed. Blocker B11 is precisely what happens when Module 5 numbers come from somewhere else.",
+      "documented_in": "docs/telemedicine_parameters.md",
+      "note": "This one is the most likely to change legitimately - several values are ASSUMED and are waiting on real measurements (technician time per patient, clinician review time). Update the hash in the same commit and say what moved."
+    }
+  ]
+}

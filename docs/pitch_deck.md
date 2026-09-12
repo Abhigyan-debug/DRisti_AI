@@ -210,5 +210,5 @@ demo/run_demo                          % live end-to-end demo
 analyseFailureCases                    % slide 6
 recommend_district_configuration       % slides 7, 8
 run_district_scenario_analysis(true)   % regenerates all figures
-runtests('tests/')                     % 28 tests
+runtests('tests/')                     % 57 test cases
 ```

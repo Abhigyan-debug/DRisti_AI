@@ -1,5 +1,24 @@
 * text=auto
 
+## ---------------------------------------------------------------------------
+## Frozen contracts are hashed BYTE FOR BYTE, so their line endings must not
+## depend on who checked them out.
+##
+## `* text=auto` above (added with the MATLAB project scaffolding) normalises to
+## LF in the repository and converts to CRLF on Windows checkout. That changes
+## the SHA-256 of every config file without changing a single character of its
+## content - and these files' hashes are load-bearing: validateLesionDetectors.m
+## hashes the gate file at runtime and records it in results/lesion_validation.mat
+## to prove the bar was frozen before the measurement. A fresh Windows clone
+## would have reported a mismatch on a file nobody had touched, which is the
+## worst kind of alarm: a true-looking one with no cause.
+##
+## Pinning to LF reproduces the hashes quoted in docs/phase2_results.md,
+## docs/train_operating_points_frozen.md, CLAUDE.md and config/frozen_artifacts.json
+## on every platform. Verify with: python tools/verify_freeze.py
+## ---------------------------------------------------------------------------
+config/*.json text eol=lf
+
 *.fig binary
 *.mat binary
 *.mdl binary diff merge=mlAutoMerge
