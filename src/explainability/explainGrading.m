@@ -165,8 +165,12 @@ end
 function [T, agreement] = buildEvidence(cam, F)
 %BUILDEVIDENCE  How much CAM attention lands on each independently-found lesion.
 
-    names = {'hardExudates', 'softExudates', 'microaneurysms', 'haemorrhages'};
-    labels = {'Hard exudates', 'Soft exudates', 'Microaneurysms', 'Haemorrhages'};
+    % Microaneurysms are DELIBERATELY ABSENT. Measured precision is 0.022, so
+    % reporting a count would put a false clinical finding in front of a
+    % clinician - worse than reporting nothing, because it looks authoritative.
+    % Re-add it when a trained false-positive classifier exists.
+    names = {'hardExudates', 'softExudates', 'haemorrhages'};
+    labels = {'Hard exudates', 'Soft exudates', 'Haemorrhages'};
 
     lesion = strings(0,1); count = []; camMass = []; camDensity = [];
     totalCam = sum(cam(:));

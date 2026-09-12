@@ -1,4 +1,4 @@
-function d = detectDarkLesions(img, ctx)
+function d = detectDarkLesions(img, ctx, opts)
 %DETECTDARKLESIONS  Microaneurysms and haemorrhages in one pass.
 %
 %   d = DETECTDARKLESIONS(img, ctx) returns both, because they are the SAME
@@ -16,12 +16,34 @@ function d = detectDarkLesions(img, ctx)
 %   Detecting them separately would mean running the same candidate extraction
 %   twice and then disagreeing with itself about borderline objects.
 %
-%   SET EXPECTATIONS: the best microaneurysm AUPR ever recorded on IDRiD is
-%   0.5017 (iFLYTEK-MIG, cascaded CNN ensemble). This is a morphological
-%   detector with no learned false-positive rejection, so it will be far below
-%   that. It is included because the MA COUNT is a required Phase 3 feature and
-%   an imperfect count is more useful than a missing column - not because it is
-%   competitive. Report it as such.
+%   ⚠️ THE MICROANEURYSM CHANNEL DOES NOT WORK. MEASURED, NOT ASSUMED.
+%
+%   Against IDRiD's MA ground-truth masks:
+%       per-lesion recall 0.110, precision 0.022, 14.5x over-detection
+%
+%   i.e. it misses ~89% of real microaneurysms and ~98% of what it reports is
+%   not a microaneurysm. A parameter sweep confirms this is not a tuning
+%   problem - precision never exceeds 0.022 at ANY threshold, and tightening
+%   the threshold to make the count look plausible simply destroys recall:
+%
+%       threshSD 1.5 -> recall 0.166  precision 0.019   (26x over-detection)
+%       threshSD 2.0 -> recall 0.110  precision 0.022   (14.5x)
+%       threshSD 3.0 -> recall 0.007  precision 0.003   (1.0x - plausible
+%                                      count, detecting essentially nothing)
+%
+%   That last row is the trap: a count that LOOKS right while being wrong.
+%
+%   Morphological MA detection without learned false-positive rejection is a
+%   known-hard problem; the best result ever recorded on IDRiD is AUPR 0.5017
+%   (iFLYTEK-MIG) using a cascaded CNN ensemble. Fixing this needs a trained
+%   FP classifier over these candidates, not better morphology.
+%
+%   CONSEQUENCE: d.maCount must NOT be shown to a clinician as a finding, and
+%   is flagged unreliable in the feature contract. The candidates are retained
+%   because they are the right input to a future FP classifier, and because
+%   Phase 3 measured that lesion features add nothing to the CNN anyway.
+%   The haemorrhage channel shares this pipeline and should be treated with
+%   the same suspicion until measured separately.
 %
 %   The dot / blot / flame split follows the shape rule R3 should confirm:
 %   dot = small and round, blot = larger and round, flame = elongated
@@ -33,6 +55,7 @@ function d = detectDarkLesions(img, ctx)
     arguments
         img (:,:,:) {mustBeNumeric}
         ctx struct
+        opts.threshSD (1,1) double = 2.0
     end
 
     fov = ctx.fov;
@@ -72,7 +95,7 @@ function d = detectDarkLesions(img, ctx)
     if isempty(vals)
         d = emptyResult(img); return
     end
-    thr = median(vals) + 2.0 * std(vals);
+    thr = median(vals) + opts.threshSD * std(vals);
     cand = flat > thr & valid;
     cand = imopen(cand, strel('disk', 1));
 

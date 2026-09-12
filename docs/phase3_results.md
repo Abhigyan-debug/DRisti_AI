@@ -342,6 +342,57 @@ that the effect is small.
 
 ---
 
+## 3e. Microaneurysm detection does not work — measured, then disclosed
+
+Against IDRiD's MA ground-truth masks (n=12):
+
+| | Value |
+|---|---|
+| per-lesion recall | **0.110** |
+| per-lesion precision | **0.022** |
+| over-detection | 14.5× |
+
+It misses ~89% of real microaneurysms, and ~98% of what it reports is not a
+microaneurysm.
+
+**This is not a tuning problem.** A threshold sweep found no working operating
+point:
+
+| threshSD | recall | precision | count ratio |
+|---|---|---|---|
+| 1.5 | 0.166 | 0.019 | 26× |
+| 2.0 | 0.110 | 0.022 | 14.5× |
+| 2.5 | 0.014 | 0.009 | 4.3× |
+| 3.0 | 0.007 | 0.003 | **1.0×** |
+
+That last row is the trap worth naming: at threshSD 3.0 the *count* looks
+correct — roughly as many detections as there are true lesions — while the
+detector is finding essentially nothing. A plausible number can be entirely
+wrong, which is exactly why the count was measured against ground truth rather
+than eyeballed for reasonableness.
+
+Morphological MA detection without learned false-positive rejection is a
+known-hard problem. The best result ever recorded on IDRiD is AUPR 0.5017
+(iFLYTEK-MIG), using a cascaded CNN ensemble. Fixing this needs a trained FP
+classifier over these candidates, not better morphology.
+
+### What was done about it
+
+- **The count no longer appears on the clinical report.** Showing "Microaneurysms
+  n=348" to a clinician at 2.2% precision is a false finding presented
+  authoritatively — worse than showing nothing.
+- **`reliable: false` travels with the number** in the feature contract, alongside
+  the measured recall and precision, so no downstream consumer can treat it as a
+  finding by accident.
+- **The candidates are retained**, because they are the correct input to a future
+  false-positive classifier, and because Phase 3 measured that lesion features add
+  nothing to the CNN's accuracy anyway (§3d).
+
+The haemorrhage channel shares this pipeline and has **not** been separately
+measured. Treat it with the same suspicion until it has been.
+
+---
+
 ## 4. What is NOT done
 - **The hybrid lesion-feature model.** Only the single-technique baseline exists,
   so the README's "integrated beats single-technique" claim is **not yet
