@@ -118,6 +118,7 @@ function d = detectDarkLesions(img, ctx, opts)
     haemMask = false(size(cand));
     nDot = 0; nBlot = 0; nFlame = 0;
     maCentroids = zeros(0, 2);
+    haemCentroids = zeros(0, 2);
 
     % MA size cut: 125 microns. A disc is ~1800 microns, so the threshold is
     % about 0.07 disc diameters - this is the conventional clinical boundary
@@ -133,6 +134,7 @@ function d = detectDarkLesions(img, ctx, opts)
             maCentroids(end+1, :) = s.Centroid; %#ok<AGROW>
         else
             haemMask(px) = true;
+            haemCentroids(end+1, :) = s.Centroid; %#ok<AGROW>
             if s.Eccentricity > 0.88
                 nFlame = nFlame + 1;         % elongated, follows nerve fibres
             elseif s.Area > pi * (discDiamWork * 0.08)^2
@@ -144,7 +146,21 @@ function d = detectDarkLesions(img, ctx, opts)
     end
 
     % --- stage 2: false-positive rejection --------------------------------
-    if isfield(opts.candidateClassifier, 'trained') && ~isempty(maCentroids)
+    % ⚠️ Routed by which channel the supplied classifier was TRAINED for
+    % (meta.lesion). A classifier trained on microaneurysm candidates has never
+    % seen a haemorrhage-sized patch and should not silently be applied to that
+    % channel, or vice versa. This was previously unconditional-on-MA-only:
+    % passing a classifier while evaluating haemorrhages filtered nothing at
+    % all (haemMask was never touched), and "stage 1 + classifier" silently
+    % equalled "stage 1 alone" - caught via EVALUATETWOSTAGEDETECTOR('haemorrhages')
+    % showing identical numbers with and without the classifier.
+    targetLesion = '';
+    if isfield(opts.candidateClassifier, 'meta') && isfield(opts.candidateClassifier.meta, 'lesion')
+        targetLesion = char(opts.candidateClassifier.meta.lesion);
+    end
+
+    if isfield(opts.candidateClassifier, 'trained') && strcmp(targetLesion, 'microaneurysms') ...
+            && ~isempty(maCentroids)
         keep = scoreCandidates(small, maCentroids, opts.candidateClassifier, ...
                                opts.classifierThreshold, scale);
         ccMA = bwconncomp(maMask, 8);
@@ -156,6 +172,22 @@ function d = detectDarkLesions(img, ctx, opts)
         end
         maMask(drop) = false;
         maCentroids = maCentroids(keep(1:min(numel(keep), size(maCentroids,1))), :);
+    elseif isfield(opts.candidateClassifier, 'trained') && strcmp(targetLesion, 'haemorrhages') ...
+            && ~isempty(haemCentroids)
+        keep = scoreCandidates(small, haemCentroids, opts.candidateClassifier, ...
+                               opts.classifierThreshold, scale);
+        ccH = bwconncomp(haemMask, 8);
+        drop = false(size(haemMask));
+        for q = 1:ccH.NumObjects
+            if q <= numel(keep) && ~keep(q)
+                drop(ccH.PixelIdxList{q}) = true;
+            end
+        end
+        haemMask(drop) = false;
+        haemCentroids = haemCentroids(keep(1:min(numel(keep), size(haemCentroids,1))), :);
+        % dot/blot/flame counts were tallied before filtering and are not
+        % recomputed here - haemByType is a shape breakdown of the RAW
+        % candidate set, not a claim about the filtered one.
     end
 
     % --- measure ----------------------------------------------------------
@@ -194,13 +226,21 @@ function keep = scoreCandidates(small, centroids, C, thr, scale)
 %   working-scale image. A size mismatch here silently degrades the classifier
 %   without erroring, which is why the size comes from the saved metadata
 %   rather than being hardcoded.
+%
+%   TEST-TIME AUGMENTATION. A lesion patch has no canonical orientation, so the
+%   score is averaged over all 8 dihedral views when the saved model was
+%   trained with TTA (meta.tta) - matching how it was validated. Scoring one
+%   orientation at inference while validating on 8 would silently under-deliver
+%   the measured operating point.
 
     inSz = C.meta.inputSize;
     half = floor(inSz(1)/2);
     n = size(centroids, 1);
     keep = true(n, 1);
+    useTTA = isfield(C.meta, 'tta') && C.meta.tta;
+    nViews = 1; if useTTA, nViews = 8; end
 
-    patches = zeros([inSz(1:2) 3 n], 'single');
+    patches = zeros([inSz(1:2) 3 n*nViews], 'single');
     valid = false(n,1);
     for q = 1:n
         ctr = round(centroids(q,:));
@@ -209,16 +249,30 @@ function keep = scoreCandidates(small, centroids, C, thr, scale)
         if r1 < 1 || c1 < 1 || r2 > size(small,1) || c2 > size(small,2)
             continue    % keep edge candidates rather than discard unscored
         end
-        pch = small(r1:r2, c1:c2, :);
+        pch = single(small(r1:r2, c1:c2, :));
         if size(pch,3) == 1, pch = repmat(pch,1,1,3); end
-        patches(:,:,:,q) = single(pch);
+        base = (q-1)*nViews;
+        if useTTA
+            views = {pch, fliplr(pch), flipud(pch), rot90(pch,1), rot90(pch,2), ...
+                     rot90(pch,3), fliplr(rot90(pch,1)), fliplr(rot90(pch,2))};
+            for v = 1:8
+                patches(:,:,:,base+v) = views{v};
+            end
+        else
+            patches(:,:,:,base+1) = pch;
+        end
         valid(q) = true;
     end
 
     if ~any(valid), return; end
-    Y = predict(C.trained, dlarray(patches(:,:,:,valid), 'SSCB'));
+    validCols = false(1, n*nViews);
+    for q = find(valid)'
+        validCols((q-1)*nViews+1 : q*nViews) = true;
+    end
+    Y = predict(C.trained, dlarray(patches(:,:,:,validCols), 'SSCB'));
     P = double(gather(extractdata(Y)))';
-    sc = P(:,2);
+    scAll = P(:,2);
+    sc = mean(reshape(scAll, nViews, nnz(valid)), 1)';
     keep(valid) = sc >= thr;
 end
 

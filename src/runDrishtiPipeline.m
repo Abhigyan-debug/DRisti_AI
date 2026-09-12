@@ -48,6 +48,8 @@ function out = runDrishtiPipeline(imagePath, opts)
         opts.saveReport (1,1) logical = false
         opts.outputDir (1,:) char = ''
         opts.siteCalibration struct = struct()
+        opts.patient struct = struct()
+        opts.screening struct = struct()
         opts.verbose (1,1) logical = true
     end
 
@@ -71,12 +73,20 @@ function out = runDrishtiPipeline(imagePath, opts)
     q = processImage(img);
     out.timings.qualityGate = toc(t);
     out.quality = struct('decision', q.decision, 'enhanced', q.enhanced, ...
-                         'summary', q.summary);
+                         'summary', q.summary, ...
+                         'sharpness', q.before.sharpness.normalised, ...
+                         'sharpnessBand', q.before.sharpness.band);
 
     if ~q.gradable
         out.decision = 'recapture';
         out.reason = q.summary;
         out.timings.total = toc(tAll);
+        % A rejected image still gets a report. The recapture instruction is the
+        % only output the technician can act on, and it has to reach them at the
+        % camera - returning silently here leaves the operator with nothing.
+        if opts.saveReport
+            out = emitReport(out, opts, cfg, img);
+        end
         if opts.verbose, printResult(out); end
         return
     end
@@ -89,6 +99,8 @@ function out = runDrishtiPipeline(imagePath, opts)
     out.timings.gradeAndExplain = toc(t);
 
     out.grade = E.grade;
+    out.gradeProbs = E.gradeProbs;
+    out.model = E.model;
     out.overlay = E.overlay;
     out.evidence = E.evidence;
     out.camAgreement = E.agreement;
@@ -127,10 +139,7 @@ function out = runDrishtiPipeline(imagePath, opts)
 
     % ---- 5. report --------------------------------------------------------
     if opts.saveReport
-        dir0 = opts.outputDir;
-        if isempty(dir0), dir0 = fullfile(cfg.reportsDir, 'demo'); end
-        if ~isfolder(dir0), mkdir(dir0); end
-        out.reportPath = writeReport(out, dir0);
+        out = emitReport(out, opts, cfg, img);
     end
 
     if opts.verbose, printResult(out); end
@@ -138,6 +147,38 @@ end
 
 
 % ------------------------------------------------------------------ helpers
+
+function out = emitReport(out, opts, cfg, img)
+%EMITREPORT  Write the HTML report, with a PNG fallback.
+%
+%   Natik's HTML generator is the real report - structured, styled and built for
+%   the <30s triage bar. The PNG is a fallback for when a browser is not
+%   available (a live demo on a projector, say); it is skipped when there is no
+%   overlay, which is the case for a rejected image.
+
+    dir0 = opts.outputDir;
+    if isempty(dir0), dir0 = fullfile(cfg.reportsDir, 'demo'); end
+    if ~isfolder(dir0), mkdir(dir0); end
+    try
+        rd = buildReportData(out, 'patient', opts.patient, 'screening', opts.screening);
+        % out.overlay is already the Grad-CAM composite, so it is passed as the
+        % image with no separate heatmap - compositing it twice would wash the
+        % retina out and exaggerate the attention region.
+        % A rejected image has no overlay, but the technician still needs to
+        % SEE the frame that failed - "out of focus" is far easier to act on
+        % next to the blurred picture that produced it.
+        shown = out.overlay;
+        if isempty(shown), shown = img; end
+        out.reportPath = generate_clinical_report(rd, shown, [], ...
+            fullfile(dir0, sprintf('%s_report.html', out.imageName)));
+    catch ME
+        warning('drishti:htmlReportFailed', ...
+            'HTML report failed (%s); falling back to PNG.', ME.message);
+    end
+    out.overlayPath = writeReport(out, dir0);
+end
+
+
 
 function p = writeReport(out, dir0)
 %WRITEREPORT  One-page annotated summary, designed for <30s review.

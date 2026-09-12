@@ -1,4 +1,4 @@
-function e = segmentExudates(img, ctx)
+function e = segmentExudates(img, ctx, opts)
 %SEGMENTEXUDATES  Hard and soft exudate segmentation.
 %
 %   e = SEGMENTEXUDATES(img, ctx) where ctx carries .fov, .disc and optionally
@@ -37,6 +37,30 @@ function e = segmentExudates(img, ctx)
     arguments
         img (:,:,:) {mustBeNumeric}
         ctx struct
+        % Candidate cutoff: median + thresholdK*std.
+        %
+        % ⚠️ 2.2 was the shipped default and is documented (phase3_results.md
+        % §3e) as scoring precision 0.595 / recall 0.254 - "fit to display".
+        % A fresh, reproducible run of EVALUATESEGMENTATION('exudates') does
+        % NOT reproduce that: at k=2.2 it measures precision 0.441 / recall
+        % 0.270, which does NOT clear the 0.5 display bar. Neither this
+        % function nor its dependencies (detectFOV/locateOpticDisc/
+        % segmentVessels) changed this session, so this is a genuine
+        % discrepancy against the documented number, not a regression
+        % introduced here - see docs/phase3_results.md §3e for the full
+        % measured sweep and the flag raised about it.
+        %
+        % k=3.0 is the loosest threshold that clears 0.5 with real margin
+        % (measured 0.549, vs 0.500 exactly - borderline - at k=2.6):
+        %   k=2.2  recall 0.270  precision 0.441   NOT fit
+        %   k=2.6  recall 0.195  precision 0.500   borderline, NOT fit
+        %   k=3.0  recall 0.146  precision 0.549   fit            <- new default
+        %   k=3.5  recall 0.111  precision 0.598   fit
+        %   k=4.0  recall 0.081  precision 0.621   fit
+        % Recall at any threshold that clears the bar is substantially below
+        % the previously-claimed 0.254. Re-run EVALUATESEGMENTATION('exudates')
+        % before trusting a number here - do not restate old figures.
+        opts.thresholdK (1,1) double = 3.0
     end
 
     fov = ctx.fov;
@@ -71,7 +95,7 @@ function e = segmentExudates(img, ctx)
     if isempty(vals)
         e = emptyResult(img); return
     end
-    thr = median(vals) + 2.2 * std(vals);
+    thr = median(vals) + opts.thresholdK * std(vals);
     cand = flat > thr & valid;
 
     % Vessels can produce bright specular reflexes along their centreline;

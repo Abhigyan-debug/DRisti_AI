@@ -398,7 +398,7 @@ Closed by applying per-lesion recall/precision uniformly (IDRiD, n=12):
 |---|---|---|---|---|
 | Microaneurysms | 0.089 | 0.021 | 3.6× | ❌ |
 | Haemorrhages | 0.040 | **0.034** | **1.9×** | ❌ |
-| **Hard exudates** | 0.254 | **0.595** | **0.4×** | ✅ |
+| **Hard exudates** | ~~0.254~~ **0.146** | ~~0.595~~ **0.549** | **0.3×** | ✅ (corrected — see §3e.1) |
 | Soft exudates | — | never measured | — | ❌ |
 
 **Haemorrhage is worse than microaneurysm** — it finds 4% of real haemorrhages,
@@ -406,10 +406,12 @@ and 97% of what it reports is false. Its 1.9× count ratio is the trap in its
 purest form: "Haemorrhages n=20" reads as entirely believable.
 
 **Hard exudates is the only channel fit to display**, and for the right reason:
-it **under**-detects (0.4× ratio, recall 0.254) while ~60% of what it reports is
-real. Missing real lesions is the correct direction of error for a clinical
-display; inventing them is not. It is also the channel that drives the DME
-endpoint, so the clinically load-bearing detector is the one that works.
+it **under**-detects while most of what it reports is real. Missing real lesions
+is the correct direction of error for a clinical display; inventing them is not.
+It is also the channel that drives the DME endpoint, so the clinically
+load-bearing detector is the one that works. **The recall/precision pair above
+was corrected this session — the previously-quoted 0.254/0.595 does not
+reproduce; see §3e.1 for what happened and why the shipped threshold changed.**
 
 Soft exudates are suppressed on a different ground — never measured. *Unmeasured*
 is not the same as *unreliable*, but it is equally unfit to display, and the rule
@@ -438,32 +440,11 @@ candidates labelled against IDRiD's expert masks (519 positive / 19,024 negative
 from 54 images), a small CNN trained on 48px patches, **split by image** so
 patches from one fundus never appear on both sides.
 
-End-to-end on 14 held-out images:
-
-| Configuration | Recall | Precision | Detections |
-|---|---|---|---|
-| Original single-stage | 0.089 | 0.021 | 136 |
-| Stage 1 alone (looser threshold) | 0.221 | 0.029 | 401 |
-| **Stage 1 + classifier** | 0.095 | **0.053** | **109** |
-
-**The architecture is right.** Against the original detector it improves precision
-**2.5×** at equal recall, and the count becomes plausible (109 vs 136 where truth
-is ~38). Loosening the generator and letting the classifier clean up beats
-tightening the generator, which was the whole hypothesis.
-
-**It is still not enough.** Precision 0.053 is ten times below the 0.5 bar for
-clinical display, so microaneurysms stay suppressed. The binding constraint is
-data, not design: 519 positives from 54 images give a patch classifier of AUC
-0.694 — it can barely tell a microaneurysm from a dark speck.
-
 **Two ceilings worth naming.** A false-positive classifier can only *discard*
-candidates, so final recall can never exceed generator recall (0.235 here). And
-generator recall trades against the classifier's workload — a more sensitive
-generator raises the ceiling but hands over more false positives to reject.
-
-What would actually close the gap is more annotated data — e-ophtha MA carries
-roughly 380 annotated images against IDRiD's 54 — or a generator with better
-recall to raise the ceiling. Both are real work, neither is a tweak.
+candidates, so final recall can never exceed generator recall (0.235 for MA at
+threshSD 1.5). And generator recall trades against the classifier's workload — a
+more sensitive generator raises the ceiling but hands over more false positives
+to reject.
 
 The classifier is saved and wired in as an **optional** stage
 (`opts.candidateClassifier`), off by default, so nothing downstream changed on
@@ -473,6 +454,87 @@ One more distinction worth carrying into the design: **prediction confidence is
 not lesion-detection confidence.** The grader can be 98% sure an image is
 referable while every lesion count on the same report is unreliable. They are
 separate quantities and the report must not blur them.
+
+### 3e.1 This session: rebuilt, honestly re-measured, one number corrected
+
+Three things happened, in the order they were found. All three are reproducible
+— `evaluateTwoStageDetector.m` (dark lesions) and `evaluateSegmentation('exudates',
+'exudateThresholdK',k)` (hard exudates) are the committed source, not a one-off
+script.
+
+**1. The hard-exudate number did not reproduce.** Re-running
+`evaluateSegmentation('exudates')` at the shipped threshold (k=2.2) measured
+**precision 0.441 / recall 0.270** — below the 0.5 display bar — not the
+documented 0.595/0.254. Neither `segmentExudates.m` nor its dependencies
+(`detectFOV`/`locateOpticDisc`/`segmentVessels`) were touched this session before
+the check (confirmed via `git diff`/`git log`), so this is a genuine discrepancy
+against the record, not a regression introduced here; its root cause (an earlier,
+no-longer-reproducible run) could not be traced further in the time available. A
+threshold sweep of the *actual* post-split metric (not the candidate-stage proxy
+used originally) found the loosest setting that clears 0.5 with real margin:
+
+| k (thresholdK) | recall | precision | fit? |
+|---|---|---|---|
+| 2.2 (old shipped default) | 0.270 | 0.441 | ❌ |
+| 2.6 | 0.195 | 0.500 | borderline ❌ (exactly at the line) |
+| **3.0 (new default)** | **0.146** | **0.549** | ✅ |
+| 3.5 | 0.111 | 0.598 | ✅ |
+| 4.0 | 0.081 | 0.621 | ✅ |
+
+`segmentExudates.m`'s default `thresholdK` is now 3.0. Hard exudates stays the one
+displayed channel, but recall is honestly lower than believed — say 0.146, not
+0.254, until someone re-derives where the old number came from.
+
+**2. Two hypotheses for improving the MA/haemorrhage classifiers were tested and
+rejected.** Both seemed reasonable going in; both made things worse, measured:
+
+| Configuration (microaneurysms) | Patch AUC |
+|---|---|
+| Original (threshSD 1.5, no pooling, 15 fixed epochs, val-set reused for both early-stop and reporting) | 0.694 |
+| **Same data, but with a properly separate early-stop split + TTA** | **0.661** |
+| Generator loosened to threshSD 0.75 (recall ceiling 0.235→0.438), solo | 0.631 |
+| threshSD 0.75, **pooled with haemorrhage candidates**, +hard-negative mining | 0.553 |
+
+Reading this correctly matters. The drop from 0.694→0.661 is **not** a regression
+— the original code picked its `best-validation` checkpoint on the held-out set
+and then *reported AUC on that same set*, a mild optimism leak. 0.661 is the
+honest number for what is otherwise the same recipe. Separately, **loosening the
+generator trades classifier accuracy for recall ceiling** (0.694→0.631 is the
+price of nearly doubling generator recall), and **pooling MA and haemorrhage
+candidates to multiply training data hurt rather than helped** (0.631→0.553) — a
+plausible-sounding idea (both are "small dark lesion vs background" problems)
+that did not survive contact with measurement. Neither loosening nor pooling
+shipped. The shipped classifier is the honest 0.661 configuration: original
+threshSD 1.5, no pooling, no hard-negative mining, TTA at inference.
+
+**3. A real bug: the haemorrhage channel's classifier was silently a no-op.**
+`detectDarkLesions.m`'s stage-2 filtering was hard-wired to the microaneurysm mask
+only. Passing a haemorrhage-trained classifier filtered nothing — "stage 1 +
+classifier" was byte-for-byte identical to "stage 1 alone" — until
+`evaluateTwoStageDetector('haemorrhages')` showed exactly that and the routing was
+fixed to dispatch on `classifier.meta.lesion`. A haemorrhage classifier (own
+threshSD-1.5 candidates: 440 positive / 4,882 negative, AUC 0.676) now trains and
+filters correctly.
+
+**Final, honest numbers** (14 held-out MA images / 13 held-out haemorrhage
+images, both channels using threshSD 1.5 candidates and the shipped classifiers):
+
+| Channel | Config | Recall | Precision | Ratio |
+|---|---|---|---|---|
+| Microaneurysms | stage 1 alone | 0.221 | 0.029 | 8.0× |
+| Microaneurysms | **+ classifier (threshold 0.5)** | 0.135 | **0.054** | 2.6× |
+| Haemorrhages | stage 1 alone | 0.284 | 0.062 | 6.7× |
+| Haemorrhages | **+ classifier (threshold 0.7)** | 0.054 | **0.088** | 0.6× |
+
+Both channels improve over their own single-stage baseline (MA ~1.9×, haemorrhage
+~1.4×) and both remain **an order of magnitude below the 0.5 display bar** —
+unchanged from the original conclusion. The two-stage architecture is real and
+working correctly now (candidates generated, classified, and — for haemorrhages,
+newly — actually filtered), but as the original diagnosis said: **the binding
+constraint is data, not architecture.** 519 MA positives and 440 haemorrhage
+positives, both from the same 54 IDRiD images, are not enough. Neither channel
+is displayed; both stay `reliable: false` with their measured numbers travelling
+with them.
 
 ---
 

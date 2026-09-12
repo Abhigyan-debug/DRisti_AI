@@ -65,7 +65,15 @@ function D = buildCandidateDataset(opts)
     L = dir(fullfile(maskDir, ['*' suf]));
     n = min(numel(L), opts.limit);
 
-    outDir = fullfile(cfg.dataRoot, '_cache', ['candidates_' opts.lesion]);
+    % Versioned by threshSD. Writing two different threshSD runs into the same
+    % folder silently corrupts the dataset: bwconncomp's enumeration order is
+    % not stable across runs with different candidate counts, so imwrite's
+    % "_%04d" index collides between runs and overwrites a patch from one
+    % threshold with an unrelated one from another - sometimes leaving the same
+    % filename present in BOTH pos/ and neg/ once relabelled. This happened
+    % once during a threshSD 1.5 -> 0.75 rebuild and had to be wiped and redone.
+    thrTag = strrep(sprintf('%.2f', opts.threshSD), '.', '');
+    outDir = fullfile(cfg.dataRoot, '_cache', sprintf('candidates_%s_t%s', opts.lesion, thrTag));
     for c = ["pos", "neg"]
         d = fullfile(outDir, c);
         if ~isfolder(d), mkdir(d); end

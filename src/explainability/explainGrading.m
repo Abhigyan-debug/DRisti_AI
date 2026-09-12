@@ -46,6 +46,7 @@ function E = explainGrading(img, opts)
     S = load(opts.modelFile);
     net = S.trainedNet;
     inputSize3 = S.meta.inputSize;
+    E.model = S.meta;   % travels to the report, which must name the real model
 
     % Operating point: frozen on validation, never re-derived here.
     threshold = opts.threshold;
@@ -168,7 +169,8 @@ function [T, agreement] = buildEvidence(cam, F)
     % ONLY VALIDATED CHANNELS APPEAR HERE. Measured per-lesion precision
     % against IDRiD ground truth, n=12:
     %
-    %     hard exudates    0.595  <- displayed
+    %     hard exudates    0.549  <- displayed (was 0.595 - did not reproduce;
+    %                                see segmentExudates.m and phase3_results.md §3e)
     %     haemorrhages     0.034  <- suppressed
     %     microaneurysms   0.021  <- suppressed
     %     soft exudates    never measured  <- suppressed
@@ -179,9 +181,10 @@ function [T, agreement] = buildEvidence(cam, F)
     % validated at all, and "do not display what you have not measured" is only
     % a rule if it applies uniformly.
     %
-    % Hard exudates earn their place by UNDER-detecting: 0.4x count ratio,
-    % recall 0.254. It misses real lesions rather than inventing them, which is
-    % the correct direction of error for a clinical display. It is also the
+    % Hard exudates earn their place by UNDER-detecting, which is the correct
+    % direction of error for a clinical display - but the margin is thinner
+    % than once believed: recall is only 0.146 at the threshold that actually
+    % clears 0.5 precision, not the previously-claimed 0.254. It is also the
     % channel that drives the DME endpoint.
     %
     % Re-add a channel here only after measuring it - see evaluateSegmentation.

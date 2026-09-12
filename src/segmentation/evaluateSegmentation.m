@@ -37,6 +37,10 @@ function R = evaluateSegmentation(target, opts)
         target (1,:) char {mustBeMember(target,{'vessels','exudates','lesions','all'})} = 'all'
         opts.limit (1,1) double = Inf
         opts.verbose (1,1) logical = true
+        % Passed straight to SEGMENTEXUDATES - lets a threshold sweep measure
+        % REAL post-split hard-exudate precision, not just the candidate-stage
+        % proxy in SWEEPEXUDATETHRESHOLD.
+        opts.exudateThresholdK (1,1) double = 2.2
     end
 
     R = struct();
@@ -151,7 +155,7 @@ function E = evalExudates(opts)
         v = segmentVessels(img, 'fov', fov, 'discRadiusPx', disc.radius);
         fv = locateFovea(img, disc, 'vesselMask', v.mask);
         e = segmentExudates(img, struct('fov',fov,'disc',disc, ...
-            'vesselMask',v.mask,'fovea',fv));
+            'vesselMask',v.mask,'fovea',fv), 'thresholdK', opts.exudateThresholdK);
 
         pred = e.hardMask & fov.mask;
         g = gt & fov.mask;
