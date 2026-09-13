@@ -208,7 +208,6 @@
 <header>
   <h1>DRishti-AI</h1>
   <span class="tag">Explainable diabetic retinopathy screening · screening aid, not a diagnosis</span>
-  <span class="chip off" id="calibChip">NOT CALIBRATED</span>
   <span class="chip warn" id="workerChip">checking engine…</span>
 </header>
 
@@ -352,10 +351,6 @@ async function poll(){
     const s = await (await fetch('/api/status')).json();
     $('workerChip').className = 'chip ' + (s.workerAlive ? 'on' : 'off');
     $('workerChip').textContent = s.workerAlive ? 'ENGINE READY' : 'ENGINE OFFLINE';
-    $('calibChip').className = 'chip ' + (s.calibrated ? 'on' : 'off');
-    $('calibChip').textContent = s.calibrated
-      ? 'SITE CALIBRATED' + (s.site ? ' · ' + s.site : '')
-      : 'NOT CALIBRATED';
     renderCalibStrip(s);
   }catch(e){
     $('workerChip').className = 'chip off';
