@@ -14,7 +14,7 @@
 ## worst kind of alarm: a true-looking one with no cause.
 ##
 ## Pinning to LF reproduces the hashes quoted in docs/phase2_results.md,
-## docs/train_operating_points_frozen.md, CLAUDE.md and config/frozen_artifacts.json
+## docs/train_operating_points_frozen.md and config/frozen_artifacts.json
 ## on every platform. Verify with: python tools/verify_freeze.py
 ## ---------------------------------------------------------------------------
 config/*.json text eol=lf

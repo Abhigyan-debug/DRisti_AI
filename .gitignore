@@ -62,6 +62,13 @@ desktop.ini
 .vscode/
 .idea/
 
+# ---- Internal engineering notes (deliberately NOT in the public repo) ----
+# Removed from tracking by "Prepare the public repository for submission".
+# They stay on developer machines; ignoring them means a routine `git add -A`
+# cannot silently re-track them and undo that decision.
+CLAUDE.md
+docs/PROJECT_STATUS.md
+
 # ---- Local machine config (data paths differ per teammate) ----
 config/local_paths.json
 

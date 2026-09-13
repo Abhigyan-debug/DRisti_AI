@@ -168,4 +168,4 @@ update the contract and [datasets.md](datasets.md).
 ## See also
 
 [architecture.md](architecture.md) · [repository_map.md](repository_map.md) ·
-[troubleshooting.md](troubleshooting.md) · [PROJECT_STATUS.md](PROJECT_STATUS.md)
+[troubleshooting.md](troubleshooting.md)

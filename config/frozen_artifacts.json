@@ -11,7 +11,7 @@
     "",
     "The hashes below were verified against the files on 2026-09-13 and match the",
     "values already quoted in docs/phase2_results.md, docs/train_operating_points_frozen.md",
-    "and CLAUDE.md - which is itself the point: the docs and the manifest agree, so",
+    "- which is itself the point: the docs and the manifest agree, so",
     "a reader can check either one.",
     "",
     "WHEN A HASH CHANGES. A failure here is not automatically misconduct - a",
@@ -69,12 +69,13 @@
     },
     {
       "path": "config/clinical_definitions.json",
-      "sha256": "fb34bc919ea7c05594e4331ebe6f7f3a6fe63522fe25599d4371936c8c4b2d56",
+      "sha256": "f62054aaaaed34dbca0cc2666f63f91bdf06083302d867838c9d2d7a79cac245",
       "frozen": "2026-09-11, amended to v1.1.0 the same day (B12, logged in _amendments)",
       "frozen_by": "R3 (Abhigyat)",
       "governs": "The referable-DR endpoint: ICDR >= 2 OR referable DME, with per-dataset dme_encoding (IDRiD == 2, Messidor-2 == 1, APTOS none). Also the three reported endpoints and the operating-point freeze policy.",
       "why_it_must_not_move": "The whole headline claim is stated against this endpoint, and the Messidor-2 read that tested it is SPENT - it cannot be repeated under a different definition. A silent change here would retroactively invalidate the external result. B12 is the cautionary case: a single global DME threshold matched nothing on Messidor-2 and quietly degraded the primary endpoint to DR-only, returning a plausible number with no error.",
-      "documented_in": "docs/clinical_definitions.md"
+      "documented_in": "docs/clinical_definitions.md",
+      "hash_amended": "2026-09-13, rebase onto the public-submission base. The ONLY byte that changed is one capital letter in the _comment field: \"project hard rule 3\" -> \"Project hard rule 3\", part of rewriting references to the internal notes file that the public repository does not ship. Verified by diff: icdr_scale, dme_encoding, endpoints, operating_points and reporting_rules are byte-identical. The endpoint the spent Messidor-2 read was measured against is unchanged, so the external result stands. Previous hash: fb34bc919ea7c055..."
     },
     {
       "path": "config/quality_thresholds.json",

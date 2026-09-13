@@ -178,4 +178,4 @@ formulation instead.
 ## See also
 
 [workflow.md](workflow.md) · [architecture.md](architecture.md) ·
-[repository_map.md](repository_map.md) · [PROJECT_STATUS.md](PROJECT_STATUS.md)
+[repository_map.md](repository_map.md)

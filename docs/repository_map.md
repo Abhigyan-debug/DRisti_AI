@@ -120,7 +120,6 @@ validation). Reasons in [literature_benchmarks.md](literature_benchmarks.md) §5
 | [architecture.md](architecture.md) | How the system fits together, and why |
 | [workflow.md](workflow.md) | Every command, and what not to run |
 | [troubleshooting.md](troubleshooting.md) | Traps that cost real time |
-| [PROJECT_STATUS.md](PROJECT_STATUS.md) | Live phase/blocker register — read first |
 | [phase2_results.md](phase2_results.md) | Lesion detector validation |
 | [phase3_results.md](phase3_results.md) | Grading + explainability results |
 | [phase5_results.md](phase5_results.md) · [phase6_results.md](phase6_results.md) | Throughput model, integration |

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Enforce the honesty rules in CLAUDE.md mechanically.
+Enforce the project's honesty rules mechanically.
 
 WHY THIS EXISTS
 ---------------
-On 2026-09-13 the calibration result was corrected everywhere - CLAUDE.md,
-PROJECT_STATUS.md, site_calibration.md, three phase write-ups and the README -
+On 2026-09-13 the calibration result was corrected in eight places -
+site_calibration.md, three phase write-ups, the README and the internal notes -
 and the presentation script was missed. It still told a presenter to say
 "sensitivity goes from 31% back up to 90%", which is the one sentence the
 project had explicitly banned. Three source files were also still quoting

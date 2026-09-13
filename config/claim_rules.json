@@ -1,7 +1,7 @@
 {
   "_comment": [
     "Claim rules for tools/check_claims.py - the machine-checkable half of the",
-    "honesty rules in CLAUDE.md.",
+    "project honesty rules.",
     "",
     "THE ENGINE IN ONE SENTENCE: a banned or superseded number may appear in this",
     "repository only inside a passage that disowns it. That is deliberately the",
@@ -102,7 +102,7 @@
       "id": "sub-30-second-review-achieved",
       "pattern": "(achiev\\w*|deliver\\w*|measur\\w*|prov\\w*|demonstrat\\w*)\\s+(a\\s+)?(sub-?30|under\\s+30|less\\s+than\\s+30)[\\s-]*second",
       "reason": "No clinician has ever been timed using this system. 30 s is Module 4's DESIGN TARGET; the only MEASURED figure is a ~38 s floor on READING the report's critical path, which is already above it.",
-      "instead": "'Designed for sub-30-second review; not yet timed with a clinician. The measured reading floor alone is ~38 s.' See CLAUDE.md, Headline results."
+      "instead": "'Designed for sub-30-second review; not yet timed with a clinician. The measured reading floor alone is ~38 s.' See docs/phase5_results.md section 6."
     },
     {
       "id": "validated-explainability",
@@ -126,7 +126,7 @@
       "id": "aptos-compared-to-idx-or-gulshan",
       "pattern": "90\\.3\\s*%[^.]{0,80}(idx-?dr|gulshan)|((idx-?dr|gulshan)[^.]{0,80}90\\.3\\s*%)",
       "reason": "APTOS has no DME labels, so 90.3% is the DR-only endpoint. IDx-DR and Gulshan report mtmDR, which includes referable DME. The comparison is not like-for-like.",
-      "instead": "Compare on Messidor-2 where the endpoint matches, and label every APTOS number as the DR-only endpoint. See CLAUDE.md, Targets."
+      "instead": "Compare on Messidor-2 where the endpoint matches, and label every APTOS number as the DR-only endpoint. See docs/clinical_definitions.md."
     },
     {
       "id": "unverified-telemedicine-citations",

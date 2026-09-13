@@ -149,7 +149,7 @@ class MustNotCatch(unittest.TestCase):
         self.assertEqual([], findings(text))
 
     def test_a_blocker_entry_may_name_the_bad_citation(self):
-        # docs/PROJECT_STATUS.md B11 exists precisely to name these.
+        # The B11 blocker entry exists precisely to name these.
         text = ('- *"Rani et al., Eye 2021"* (Sankara Nethralaya) - not found. '
                 "The real Sankara Nethralaya paper appears to be John et al., 2012.")
         self.assertEqual([], findings(text))
