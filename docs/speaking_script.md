@@ -135,7 +135,7 @@ the say / do-not-say list is `site_calibration.md` §4.
 > *(pause)*
 >
 > That is deliberate. We measured those detectors. Microaneurysm precision is
-> 5%. If we printed a count, 95 out of 100 would be wrong. A wrong number on a
+> under 3%. If we printed a count, 97 out of 100 would be wrong. A wrong number on a
 > medical document is worse than no number — so we suppress it.
 >
 > The report tells the clinician what we know, and it tells them what we don't."
@@ -246,9 +246,10 @@ tells a technical judge you know what you're doing.
 
 ### "Why does your report hide the microaneurysm count?"
 
-> "Because we measured its precision at 5%. Showing a count that is wrong 19
-> times out of 20 on a clinical document is not a feature. We show hard exudates
-> because we measured that one at 55%, and we say which is which."
+> "Because we measured its precision at under 3% — on the IDRiD test split,
+> 27 images, micro-averaged. Showing a count that is wrong 97 times out of 100
+> on a clinical document is not a feature. We show hard exudates because we
+> measured that one at 82%, against a bar of 50% we froze before measuring."
 
 ### "Does the quality gate improve your accuracy?"
 

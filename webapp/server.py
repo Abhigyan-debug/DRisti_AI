@@ -244,6 +244,93 @@ def read_patient_header(headers):
             clean_meta(payload.get("screening"), SCREENING_FIELDS))
 
 
+# ---------------------------------------------------------------------------
+# Is this actually a retina?
+# ---------------------------------------------------------------------------
+# The grader will return a confident ICDR grade for ANY image handed to it - a
+# landscape, a document, a photograph of a face. That is how classifiers behave:
+# softmax over five classes always sums to one. On a screening tool, "Grade 0 -
+# no diabetic retinopathy" printed under a photograph of somebody's lunch is not
+# a funny bug, it is a result that looks exactly like a real one.
+#
+# Module 1's quality gate does not catch this either. It asks "is this fundus
+# photograph readable" - sharpness, illumination, field of view - not "is this a
+# fundus photograph at all".
+#
+# THRESHOLDS ARE MEASURED, NOT GUESSED (the same rule as every other gate here).
+# Profiled over 274 images across APTOS, IDRiD and DRIVE - Messidor-2 was NOT
+# read, it is the spent holdout. Two signals, either one is sufficient:
+#
+#   retinal colour   R/B >= 1.10 and R/G >= 1.05. The retina is red; the lowest
+#                    R/B seen on a real fundus image was 1.14.
+#   circular FOV     a bright disc on a dark surround - >= 60% of corner pixels
+#                    near black, with an illuminated centre.
+#
+# Either alone, because neither covers everything: APTOS contains genuinely
+# near-greyscale fundus photographs that fail the colour test, and some images
+# are cropped full-frame with no dark border and fail the geometry test.
+# Measured result: 274/274 real fundus images accepted, and documents, skies,
+# noise, blank frames and corrupt bytes all refused.
+#
+# It FAILS OPEN if Pillow/numpy are unavailable. This is a convenience guard in
+# front of a clinical pipeline that has its own gates; a missing optional
+# dependency must not take the screening tool offline.
+RB_MIN, RG_MIN = 1.10, 1.05
+
+
+def looks_like_retina(image_bytes):
+    """(ok, reason). True if this plausibly is a colour fundus photograph."""
+    try:
+        import io
+        import numpy as np
+        from PIL import Image
+    except ImportError:
+        return True, "image check skipped (Pillow/numpy not installed)"
+
+    try:
+        im = Image.open(io.BytesIO(image_bytes))
+        im.load()
+    except Exception:
+        return False, "That file could not be read as an image."
+
+    im = im.convert("RGB")
+    im.thumbnail((192, 192))
+    a = np.asarray(im).astype("float32")
+    lum = a.mean(2)
+
+    fov = lum > max(12, lum.max() * 0.10)
+    if fov.sum() < 50:
+        return False, "That image is almost entirely dark - nothing to grade."
+
+    r, g, b = (a[..., i][fov].mean() for i in range(3))
+    rb, rg = r / (b + 1e-6), r / (g + 1e-6)
+    retinal_colour = rb >= RB_MIN and rg >= RG_MIN
+
+    h, w = lum.shape
+    c = max(4, min(h, w) // 8)
+    corners = np.concatenate([lum[:c, :c].ravel(), lum[:c, -c:].ravel(),
+                              lum[-c:, :c].ravel(), lum[-c:, -c:].ravel()])
+    dark_surround = float((corners < 25).mean())
+    circular_fov = dark_surround >= 0.60 and lum[h // 3:2 * h // 3, w // 3:2 * w // 3].mean() > 30
+
+    # A retina has structure - vessels, disc, texture. A flat colour field has
+    # none, and skin tones are red-dominant enough to pass the colour test on
+    # their own, so a uniform patch would otherwise slip through.
+    structured = float(lum[fov].std()) >= 6.0
+    if not structured:
+        return False, ("That image has almost no detail in it - no vessels, no optic "
+                       "disc. It does not look like a retinal photograph.")
+
+    if retinal_colour or circular_fov:
+        return True, "ok"
+    return False, (
+        "That does not look like a retinal photograph, so it was not graded. "
+        "This tool screens colour fundus images only - handing it any other "
+        "picture would still produce a confident-looking grade, which is exactly "
+        "what a screening tool must never do."
+    )
+
+
 def submit(image_bytes, filename, patient=None, screening=None):
     """Write a job and block until the worker answers it."""
     ext = Path(filename or "").suffix.lower()
@@ -260,6 +347,12 @@ def submit(image_bytes, filename, patient=None, screening=None):
                 "error": "Refused: that filename looks like Messidor-2, the held-out "
                          "external benchmark. It was spent once on 2026-09-12 and must "
                          "not be read again (project rule 1)."}
+
+    # Content check, after the cheap filename checks and before anything is
+    # written to disk or handed to the worker.
+    ok, why = looks_like_retina(image_bytes)
+    if not ok:
+        return {"ok": False, "error": why}
 
     sweep_orphans()
     job_id = uuid.uuid4().hex[:12]
