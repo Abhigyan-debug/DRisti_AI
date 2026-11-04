@@ -173,8 +173,8 @@ Fundus Image → [1] Quality Assessment & Enhancement
   (JAMA 2016), making the Phase 6 comparison directly meaningful.
 - Best-in-world microaneurysm segmentation is **AUPR 0.50** — calibrate Phase 2
   expectations accordingly.
-- Two README epidemiology figures need correcting; see
-  [literature_benchmarks.md](docs/literature_benchmarks.md) §4.
+- Epidemiology figures verified and updated per primary sources; see
+  [docs/literature_benchmarks.md](docs/literature_benchmarks.md) §4.
 
 ### Phase 1 — Image Quality & Enhancement Pipeline ✅ *thresholds in [docs/phase1_quality_baseline.md](docs/phase1_quality_baseline.md)*
 - [x] Implement focus/illumination/FOV scoring functions
